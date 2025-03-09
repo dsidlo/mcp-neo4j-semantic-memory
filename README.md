@@ -43,6 +43,7 @@ Add this to your `claude_desktop_config.json`:
     "mcp-neo4j-memory": {
       "command": "npx",
       "args": [
+        "-y",
         "mcp-neo4j-memory-claude"
       ],
       "env": {
