@@ -1,6 +1,6 @@
 {
   "name": "mcp-neo4j-memory-claude",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A Neo4j knowledge graph memory implementation for Claude AI using the Model Context Protocol (MCP)",
   "repository": {
     "type": "git",
