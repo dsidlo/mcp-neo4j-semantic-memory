@@ -1,13 +1,43 @@
 {
   "name": "mcp-neo4j-memory-claude",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "description": "A Neo4j knowledge graph memory implementation for Claude AI using the Model Context Protocol (MCP)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kinark/mcp-neo4j-memory-claude.git"
+  },
+  "keywords": [
+    "claude",
+    "neo4j",
+    "mcp",
+    "knowledge-graph",
+    "memory",
+    "llm",
+    "ai",
+    "anthropic",
+    "graph-database"
+  ],
+  "author": "Kinark",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Kinark/mcp-neo4j-memory-claude/issues"
+  },
+  "homepage": "https://github.com/Kinark/mcp-neo4j-memory-claude#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.0.1",
     "neo4j-driver": "5.27.0",
     "jsonc-eslint-parser": "2.4.0"
   },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
   "module": "./main.js",
   "type": "module",
-  "main": "./main.js"
+  "main": "./main.js",
+  "bin": {
+    "mcp-neo4j-memory-claude": "./main.js"
+  },
+  "scripts": {
+    "start": "node main.js"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
 }
