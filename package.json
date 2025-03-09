@@ -32,7 +32,7 @@
   "type": "module",
   "main": "./main.js",
   "bin": {
-    "mcp-neo4j-memory-claude": "./main.js"
+    "mcp-neo4j-memory-claude": "main.js"
   },
   "scripts": {
     "start": "node main.js"
