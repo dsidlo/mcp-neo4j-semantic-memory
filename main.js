@@ -120,6 +120,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                                 },
                                 required: ['name', 'entityType', 'observations']
                             }
+                        },
+                        tz: {
+                            type: 'string',
+                            description: 'Optional timezone identifier (e.g., \'UTC\', \'EST\') for timestamps'
                         }
                     },
                     required: ['entities']
@@ -179,6 +183,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                                 },
                                 required: ['entityName', 'contents']
                             }
+                        },
+                        tz: {
+                            type: 'string',
+                            description: 'Optional timezone identifier (e.g., \'UTC\', \'EST\') for timestamps'
                         }
                     },
                     required: ['observations']
@@ -315,7 +323,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         type: 'text',
                         text: JSON.stringify(
                             await knowledgeGraphMemory.createEntities(
-                                args.entities
+                                args.entities,
+                                args.tz
                             ),
                             null,
                             2
@@ -345,7 +354,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         type: 'text',
                         text: JSON.stringify(
                             await knowledgeGraphMemory.addObservations(
-                                args.observations
+                                args.observations,
+                                args.tz
                             ),
                             null,
                             2
