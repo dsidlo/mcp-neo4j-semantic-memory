@@ -28,7 +28,7 @@ This package provides a persistent memory store that allows Claude to save, retr
 ## Installation
 
 ```bash
-npm install -g mcp-neo4j-memory-claude
+npm install -g mcp-neo4j-semantic-memory
 ```
 
 ## Prerequisites
@@ -68,7 +68,7 @@ Add this to your `claude_desktop_config.json`:
       "command": "npx",
       "args": [
         "-y",
-        "mcp-neo4j-memory-claude"
+        "mcp-neo4j-semantic-memory"
       ],
       "env": {
         "NEO4J_URI": "neo4j+s://your-instance-id.databases.neo4j.io",
