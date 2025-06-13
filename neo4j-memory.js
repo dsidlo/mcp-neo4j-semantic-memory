@@ -47,6 +47,10 @@ class Neo4jMemory {
 
     async saveGraph(graph) {
         const session = this.neo4jDriver.session({database: this.database});
+
+        // Create a deep copy of the graph
+        const processedGraph = JSON.parse(JSON.stringify(graph));
+
         return session.executeWrite(async (txc) => {
             await txc.run(
                 `
@@ -61,7 +65,7 @@ class Neo4jMemory {
           entityMemory.updatedAt = datetime()
         `,
                 {
-                    memoryGraph: graph
+                    memoryGraph: processedGraph
                 }
             );
             await txc.run(
@@ -81,19 +85,17 @@ class Neo4jMemory {
 
     async createEntities(entities) {
         const graph = await this.loadGraph();
-        const now = new Date().toISOString();
+        // Use Neo4j datetime function directly
+        const now = 'datetime()';
 
-        // Prepare entities with timestamps for observations
+        // Prepare entities with observations
         const processedEntities = entities.map(entity => {
             // Make a copy of the entity to avoid mutating the original
             const processedEntity = {...entity};
 
-            // If observations exists, create corresponding timestamps
-            if (processedEntity.observations && Array.isArray(processedEntity.observations)) {
-                processedEntity.observationTimestamps = processedEntity.observations.map(() => now);
-            } else {
+            // Ensure observations is an array
+            if (!processedEntity.observations || !Array.isArray(processedEntity.observations)) {
                 processedEntity.observations = [];
-                processedEntity.observationTimestamps = [];
             }
 
             return processedEntity;
@@ -117,7 +119,6 @@ class Neo4jMemory {
 
     async addObservations(observations) {
         const graph = await this.loadGraph();
-        const now = new Date().toISOString();
         const results = observations.map((o) => {
             const entity = graph.entities.find((e) => e.name === o.entityName);
             if (!entity) {
@@ -129,20 +130,11 @@ class Neo4jMemory {
                 entity.observations = [];
             }
 
-            // If observationTimestamps doesn't exist, initialize it
-            if (!entity.observationTimestamps) {
-                entity.observationTimestamps = [];
-            }
-
             // Filter out observations that already exist
             const newObservations = o.contents.filter((content) => !entity.observations.includes(content));
 
             // Add the new observations
             entity.observations.push(...newObservations);
-
-            // Add timestamps for each new observation (same length as newObservations)
-            const newTimestamps = newObservations.map(() => now);
-            entity.observationTimestamps.push(...newTimestamps);
 
             return {entityName: o.entityName, addedObservations: newObservations};
         });
@@ -191,7 +183,7 @@ class Neo4jMemory {
         deletions.forEach((d) => {
             const entity = graph.entities.find((e) => e.name === d.entityName);
             if (entity && entity.observations) {
-                // For each observation to delete, find its index and remove it along with its timestamp
+                // For each observation to delete, find its index and remove it
                 const indicesToRemove = [];
                 d.observations.forEach(obsToDelete => {
                     const index = entity.observations.indexOf(obsToDelete);
@@ -203,12 +195,9 @@ class Neo4jMemory {
                 // Sort indices in descending order to avoid shifting problems when removing
                 indicesToRemove.sort((a, b) => b - a);
 
-                // Remove observations and their timestamps by index
+                // Remove observations by index
                 indicesToRemove.forEach(index => {
                     entity.observations.splice(index, 1);
-                    if (entity.observationTimestamps && entity.observationTimestamps.length > index) {
-                        entity.observationTimestamps.splice(index, 1);
-                    }
                 });
             }
         });

@@ -24,7 +24,7 @@ This package provides a persistent memory store that allows Claude to save, retr
 - **Semantic Search**: Find relevant information and connections
 - **Contextual Memory**: Add observations to existing entities
 - **Relationship Tracing**: Track how concepts connect to each other
-- **Temporal Awareness**: All entities and observations are timestamped with creation and update times
+- **Temporal Awareness**: All entities are timestamped with creation and update times
 
 ## Installation
 

@@ -25,6 +25,29 @@ The point of creating Base Semantic Ontologies is to allow natural language sema
 - This can be done via one call-back to the LLM to generate appropriate cypher queries.
 - Base ontologies can be created on the fly for objects as they come in, if one does not already exist.
 
+## AI Coder
+
+---
+
+Create the create_base_ontology mcp tool that accepts a parameters: `<subject>`, `<force_it>`<br> 
+- `<subject>`<br>
+  - LLM callback: Check if the subject is already represented by an existing Base Ontology.<br>
+    - Perform a query for the list of existing Base Ontologies.<br>
+        - Check if <subject> is already represented by an existing Base Ontology.<br>
+          - Already Represented: And` <force_it>` is not set.<br>
+            - Return a message that the <<subject>> is already represented by the given Base Ontology.<br>
+        - Not Represented: Or, `<force_it>` is set,<br>
+          - Ensure that the new Base Ontology does not exist.<br>
+            - Does not exist: Create the new Base Ontology and related Entities.<br>
+              - This is done also don via an LLM call-back.
+              - Return message that a new Base Ontology was created along with details.
+          - Base Ontology exists.
+            - Return appropriate message.
+
+   
+
+---
+
 # Safe Cypher Queries
 
 The safe Cypher Queries tool is used by the LLM call-back to execute safe Cypher queries on behalf of the MCP server. A user can use it to perform non-write operations, but write operations may only be performed on behalf of this MCP server.
@@ -47,3 +70,11 @@ We know that the MCP server is requesting the write operation by using a CASE ex
     - Cypher Write Operators: CREATE, SET, DELETE, REMOVE
   - Add an environment variable to by-pass safe_cypher_queries? 
     - NEO4J_UNSAFE_MEMORY_CYPHERS=true 
+
+## AI Coder...
+
+---
+
+  "Create a new mcp tool called safe_cypher_query that takes a security-node-name and a cypher-query. If cypher query contains any write operations (CREATE, SET, DELETE, REMOVE) it must be accompanied with a security-node-name, other wise, we go ahead and execute the read-only cypher. If the cypher contains write operations and a security-node-name, we enclude the cypher with a case statement which only executes the write-cypher if the named security-node exists."
+  
+---
