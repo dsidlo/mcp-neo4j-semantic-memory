@@ -2,7 +2,7 @@
 
 ---
 
-## This is work in progress, please don't using it until this message is remove.
+## This is work in progress, please don't using it until this message is removed.
 
 ---
 
