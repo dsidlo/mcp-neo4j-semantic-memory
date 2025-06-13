@@ -1,164 +1,360 @@
 class Neo4jMemory {
-  constructor(neo4jDriver, database = "neo4j") {
-    if (!neo4jDriver) {
-      throw new Error('Neo4j driver is required');
+    constructor(neo4jDriver, database = 'neo4j') {
+        if (!neo4jDriver) {
+            throw new Error('Neo4j driver is required');
+        }
+        this.neo4jDriver = neo4jDriver;
+        this.database = database;
+        console.error(`Neo4jMemory initialized with database: ${database}`);
     }
-    this.neo4jDriver = neo4jDriver;
-    this.database = database;
-    console.error(`Neo4jMemory initialized with database: ${database}`);
-  }
-  async loadGraph() {
-    const session = this.neo4jDriver.session({ database: this.database });
-    try {
-      console.error(`Loading graph from database: ${this.database}`);
-      const res = await session.executeRead((tx) => tx.run(`
+
+    async loadGraph() {
+        const session = this.neo4jDriver.session({database: this.database});
+        try {
+            console.error(`Loading graph from database: ${this.database}`);
+            const res = await session.executeRead((tx) => tx.run(`
         MATCH (entity:Memory)
         OPTIONAL MATCH (entity)-[r]->(other)
         RETURN entity, collect(r) as relations
       `));
-      const kgMemory = res.records.reduce(
-        (kg, row) => {
-          const entityNode = row.get("entity");
-          const entityRelationships = row.get("relations");
-          kg.entities.push(entityNode.properties);
-          kg.relations.push(...entityRelationships.map((r) => r.properties));
-          return kg;
-        },
-        { entities: [], relations: [] }
-      );
-      console.error(`Loaded ${kgMemory.entities.length} entities and ${kgMemory.relations.length} relations`);
-      if (kgMemory.entities.length < 10) { // Only log details if not too many
-        console.error(`Entities: ${JSON.stringify(kgMemory.entities)}`);
-        console.error(`Relations: ${JSON.stringify(kgMemory.relations)}`);
-      }
-      return kgMemory;
-    } catch (error) {
-      console.error(`Error loading graph from database ${this.database}: ${error.message}`);
-      if (error.code === 'Neo.ClientError.Database.DatabaseNotFound') {
-        console.error(`Database '${this.database}' does not exist. Please check your Neo4j installation and configuration.`);
-      }
-      throw error; // Re-throw to allow proper handling upstream
-    } finally {
-      await session.close();
+            const kgMemory = res.records.reduce(
+                (kg, row) => {
+                    const entityNode = row.get('entity');
+                    const entityRelationships = row.get('relations');
+                    kg.entities.push(entityNode.properties);
+                    kg.relations.push(...entityRelationships.map((r) => r.properties));
+                    return kg;
+                },
+                {entities: [], relations: []}
+            );
+            console.error(`Loaded ${kgMemory.entities.length} entities and ${kgMemory.relations.length} relations`);
+            if (kgMemory.entities.length < 10) { // Only log details if not too many
+                console.error(`Entities: ${JSON.stringify(kgMemory.entities)}`);
+                console.error(`Relations: ${JSON.stringify(kgMemory.relations)}`);
+            }
+            return kgMemory;
+        } catch (error) {
+            console.error(`Error loading graph from database ${this.database}: ${error.message}`);
+            if (error.code === 'Neo.ClientError.Database.DatabaseNotFound') {
+                console.error(`Database '${this.database}' does not exist. Please check your Neo4j installation and configuration.`);
+            }
+            throw error; // Re-throw to allow proper handling upstream
+        } finally {
+            await session.close();
+        }
+        // Unreachable code removed
     }
-    return {
-      entities: [],
-      relations: []
-    };
-  }
-  async saveGraph(graph) {
-    const session = this.neo4jDriver.session({ database: this.database });
-    return session.executeWrite(async (txc) => {
-      await txc.run(
-        `
+
+    async saveGraph(graph) {
+        const session = this.neo4jDriver.session({database: this.database});
+        return session.executeWrite(async (txc) => {
+            await txc.run(
+                `
         UNWIND $memoryGraph.entities as entity
         MERGE (entityMemory:Memory { entityID: entity.name })
-        SET entityMemory += entity
+        ON CREATE SET
+          entityMemory += entity,
+          entityMemory.createdAt = datetime(),
+          entityMemory.updatedAt = datetime()
+        ON MATCH SET
+          entityMemory += entity,
+          entityMemory.updatedAt = datetime()
         `,
-        {
-          memoryGraph: graph
-        }
-      );
-      await txc.run(
-        `
+                {
+                    memoryGraph: graph
+                }
+            );
+            await txc.run(
+                `
         UNWIND $memoryGraph.relations as relation
         MATCH (from:Memory),(to:Memory)
         WHERE from.entityID = relation.from
           AND  to.entityID = relation.to
         MERGE (from)-[r:Memory {relationType:relation.relationType}]->(to)
         `,
-        {
-          memoryGraph: graph
+                {
+                    memoryGraph: graph
+                }
+            );
+        });
+    }
+
+    async createEntities(entities) {
+        const graph = await this.loadGraph();
+        const now = new Date().toISOString();
+
+        // Prepare entities with timestamps for observations
+        const processedEntities = entities.map(entity => {
+            // Make a copy of the entity to avoid mutating the original
+            const processedEntity = {...entity};
+
+            // If observations exists, create corresponding timestamps
+            if (processedEntity.observations && Array.isArray(processedEntity.observations)) {
+                processedEntity.observationTimestamps = processedEntity.observations.map(() => now);
+            } else {
+                processedEntity.observations = [];
+                processedEntity.observationTimestamps = [];
+            }
+
+            return processedEntity;
+        });
+
+        const newEntities = processedEntities.filter((e) => !graph.entities.some((existingEntity) => existingEntity.name === e.name));
+        graph.entities.push(...newEntities);
+        await this.saveGraph(graph);
+        return newEntities;
+    }
+
+    async createRelations(relations) {
+        const graph = await this.loadGraph();
+        const newRelations = relations.filter((r) => !graph.relations.some(
+            (existingRelation) => existingRelation.from === r.from && existingRelation.to === r.to && existingRelation.relationType === r.relationType
+        ));
+        graph.relations.push(...newRelations);
+        await this.saveGraph(graph);
+        return newRelations;
+    }
+
+    async addObservations(observations) {
+        const graph = await this.loadGraph();
+        const now = new Date().toISOString();
+        const results = observations.map((o) => {
+            const entity = graph.entities.find((e) => e.name === o.entityName);
+            if (!entity) {
+                throw new Error(`Entity with name ${o.entityName} not found`);
+            }
+
+            // If observations is not initialized yet, create it as an array
+            if (!entity.observations) {
+                entity.observations = [];
+            }
+
+            // If observationTimestamps doesn't exist, initialize it
+            if (!entity.observationTimestamps) {
+                entity.observationTimestamps = [];
+            }
+
+            // Filter out observations that already exist
+            const newObservations = o.contents.filter((content) => !entity.observations.includes(content));
+
+            // Add the new observations
+            entity.observations.push(...newObservations);
+
+            // Add timestamps for each new observation (same length as newObservations)
+            const newTimestamps = newObservations.map(() => now);
+            entity.observationTimestamps.push(...newTimestamps);
+
+            return {entityName: o.entityName, addedObservations: newObservations};
+        });
+        await this.saveGraph(graph);
+        return results;
+    }
+
+    async deleteEntities(entityNames) {
+        if (!entityNames || entityNames.length === 0) {
+            console.error('No entity names provided for deletion');
+            return;
         }
-      );
-    });
-  }
-  async createEntities(entities) {
-    const graph = await this.loadGraph();
-    const newEntities = entities.filter((e) => !graph.entities.some((existingEntity) => existingEntity.name === e.name));
-    graph.entities.push(...newEntities);
-    await this.saveGraph(graph);
-    return newEntities;
-  }
-  async createRelations(relations) {
-    const graph = await this.loadGraph();
-    const newRelations = relations.filter((r) => !graph.relations.some(
-      (existingRelation) => existingRelation.from === r.from && existingRelation.to === r.to && existingRelation.relationType === r.relationType
-    ));
-    graph.relations.push(...newRelations);
-    await this.saveGraph(graph);
-    return newRelations;
-  }
-  async addObservations(observations) {
-    const graph = await this.loadGraph();
-    const results = observations.map((o) => {
-      const entity = graph.entities.find((e) => e.name === o.entityName);
-      if (!entity) {
-        throw new Error(`Entity with name ${o.entityName} not found`);
-      }
-      const newObservations = o.contents.filter((content) => !entity.observations.includes(content));
-      entity.observations.push(...newObservations);
-      return { entityName: o.entityName, addedObservations: newObservations };
-    });
-    await this.saveGraph(graph);
-    return results;
-  }
-  async deleteEntities(entityNames) {
-    const graph = await this.loadGraph();
-    graph.entities = graph.entities.filter((e) => !entityNames.includes(e.name));
-    graph.relations = graph.relations.filter((r) => !entityNames.includes(r.from) && !entityNames.includes(r.to));
-    await this.saveGraph(graph);
-  }
-  async deleteObservations(deletions) {
-    const graph = await this.loadGraph();
-    deletions.forEach((d) => {
-      const entity = graph.entities.find((e) => e.name === d.entityName);
-      if (entity) {
-        entity.observations = entity.observations.filter((o) => !d.observations.includes(o));
-      }
-    });
-    await this.saveGraph(graph);
-  }
-  async deleteRelations(relations) {
-    const graph = await this.loadGraph();
-    graph.relations = graph.relations.filter((r) => !relations.some(
-      (delRelation) => r.from === delRelation.from && r.to === delRelation.to && r.relationType === delRelation.relationType
-    ));
-    await this.saveGraph(graph);
-  }
-  async readGraph() {
-    return this.loadGraph();
-  }
-  // Very basic search function
-  async searchNodes(query) {
-    const graph = await this.loadGraph();
-    const filteredEntities = graph.entities.filter(
-      (e) => query.toLowerCase().includes(e.name.toLowerCase()) || query.toLowerCase().includes(e.entityType.toLowerCase()) || e.observations.some((o) => o.toLowerCase().includes(query.toLowerCase()))
-    );
-    const filteredEntityNames = new Set(filteredEntities.map((e) => e.name));
-    const filteredRelations = graph.relations.filter(
-      (r) => filteredEntityNames.has(r.from) && filteredEntityNames.has(r.to)
-    );
-    const filteredGraph = {
-      entities: filteredEntities,
-      relations: filteredRelations
-    };
-    return filteredGraph;
-  }
-  async openNodes(names) {
-    const graph = await this.loadGraph();
-    const filteredEntities = graph.entities.filter((e) => names.includes(e.name));
-    const filteredEntityNames = new Set(filteredEntities.map((e) => e.name));
-    const filteredRelations = graph.relations.filter(
-      (r) => filteredEntityNames.has(r.from) && filteredEntityNames.has(r.to)
-    );
-    const filteredGraph = {
-      entities: filteredEntities,
-      relations: filteredRelations
-    };
-    return filteredGraph;
-  }
+
+        const session = this.neo4jDriver.session({database: this.database});
+        try {
+            console.error(`Deleting entities: ${JSON.stringify(entityNames)}`);
+
+            // Execute a Cypher query to delete entities by name
+            // Using DETACH DELETE to also remove all relationships
+            const result = await session.executeWrite(tx => {
+                return tx.run(
+                    `MATCH (entity:Memory)
+                     WHERE entity.name IN $entityNames
+                     DETACH DELETE entity
+                     RETURN count(entity) as deletedCount`,
+                    { entityNames }
+                );
+            });
+
+            const deletedCount = result.records[0]?.get('deletedCount')?.toNumber() || 0;
+            console.error(`Deleted ${deletedCount} entities`);
+
+            if (deletedCount !== entityNames.length) {
+                console.error(`Warning: Requested to delete ${entityNames.length} entities, but only deleted ${deletedCount}`);
+            }
+        } catch (error) {
+            console.error(`Error deleting entities: ${error.message}`);
+            throw error;
+        } finally {
+            await session.close();
+        }
+    }
+
+    async deleteObservations(deletions) {
+        const graph = await this.loadGraph();
+        deletions.forEach((d) => {
+            const entity = graph.entities.find((e) => e.name === d.entityName);
+            if (entity && entity.observations) {
+                // For each observation to delete, find its index and remove it along with its timestamp
+                const indicesToRemove = [];
+                d.observations.forEach(obsToDelete => {
+                    const index = entity.observations.indexOf(obsToDelete);
+                    if (index !== -1) {
+                        indicesToRemove.push(index);
+                    }
+                });
+
+                // Sort indices in descending order to avoid shifting problems when removing
+                indicesToRemove.sort((a, b) => b - a);
+
+                // Remove observations and their timestamps by index
+                indicesToRemove.forEach(index => {
+                    entity.observations.splice(index, 1);
+                    if (entity.observationTimestamps && entity.observationTimestamps.length > index) {
+                        entity.observationTimestamps.splice(index, 1);
+                    }
+                });
+            }
+        });
+        await this.saveGraph(graph);
+    }
+
+    async deleteRelations(relations) {
+        const graph = await this.loadGraph();
+        graph.relations = graph.relations.filter((r) => !relations.some(
+            (delRelation) => r.from === delRelation.from && r.to === delRelation.to && r.relationType === delRelation.relationType
+        ));
+        await this.saveGraph(graph);
+    }
+
+    async readGraph() {
+        return this.loadGraph();
+    }
+
+    // Very basic search function
+    async searchNodes(query) {
+        const graph = await this.loadGraph();
+        const filteredEntities = graph.entities.filter(
+            (e) => query.toLowerCase().includes(e.name.toLowerCase()) || query.toLowerCase().includes(e.entityType.toLowerCase()) || e.observations.some((o) => o.toLowerCase().includes(query.toLowerCase()))
+        );
+        const filteredEntityNames = new Set(filteredEntities.map((e) => e.name));
+        const filteredRelations = graph.relations.filter(
+            (r) => filteredEntityNames.has(r.from) && filteredEntityNames.has(r.to)
+        );
+        const filteredGraph = {
+            entities: filteredEntities,
+            relations: filteredRelations
+        };
+        return filteredGraph;
+    }
+
+    async openNodes(names) {
+        const graph = await this.loadGraph();
+        const filteredEntities = graph.entities.filter((e) => names.includes(e.name));
+        const filteredEntityNames = new Set(filteredEntities.map((e) => e.name));
+        const filteredRelations = graph.relations.filter(
+            (r) => filteredEntityNames.has(r.from) && filteredEntityNames.has(r.to)
+        );
+        const filteredGraph = {
+            entities: filteredEntities,
+            relations: filteredRelations
+        };
+        return filteredGraph;
+    }
+
+    /**
+     * Executes a Cypher query against the Neo4j database
+     * @param {string} query - The Cypher query to execute
+     * @param {Object} params - Parameters for the query
+     * @param {boolean} isWrite - Whether this is a write operation
+     * @returns {Array} - The query results
+     */
+    async executeCypherQuery(query, params = {}, isWrite = false) {
+        const session = this.neo4jDriver.session({database: this.database});
+        try {
+            let result;
+
+            if (isWrite) {
+                result = await session.executeWrite(tx => tx.run(query, params));
+            } else {
+                result = await session.executeRead(tx => tx.run(query, params));
+            }
+
+            // Transform the Neo4j result into a more usable format
+            return result.records.map(record => {
+                const obj = {};
+                record.keys.forEach(key => {
+                    const value = record.get(key);
+
+                    // Handle Neo4j types appropriately
+                    if (value && typeof value === 'object' && value.constructor.name === 'Node') {
+                        // For Neo4j nodes, return properties and labels
+                        obj[key] = {
+                            ...value.properties,
+                            _labels: value.labels
+                        };
+                    } else if (value && typeof value === 'object' && value.constructor.name === 'Relationship') {
+                        // For relationships, return properties and type
+                        obj[key] = {
+                            ...value.properties,
+                            _type: value.type,
+                            _startNodeId: value.startNodeElementId,
+                            _endNodeId: value.endNodeElementId
+                        };
+                    } else if (value && typeof value === 'object' && value.constructor.name === 'Path') {
+                        // For paths, return segments
+                        obj[key] = {
+                            segments: value.segments.map(seg => ({
+                                start: {...seg.start.properties, _labels: seg.start.labels},
+                                relationship: {
+                                    ...seg.relationship.properties,
+                                    _type: seg.relationship.type
+                                },
+                                end: {...seg.end.properties, _labels: seg.end.labels}
+                            }))
+                        };
+                    } else if (value && typeof value === 'object' && value.constructor.name === 'DateTime') {
+                        // For Neo4j DateTime objects, convert to ISO string
+                        obj[key] = value.toString();
+                    } else {
+                        // For primitive values and other objects
+                        obj[key] = value;
+                    }
+                });
+                return obj;
+            });
+        } finally {
+            await session.close();
+        }
+    }
+
+    /**
+     * Creates a security node with the given name
+     * This is used as a security token for write operations
+     * @param {string} name - The unique name for the security node
+     * @returns {Object} - Result of the operation
+     */
+    async createSecurityNode(name) {
+        const query = `
+      CREATE (s:SecurityNode {name: $name, createdAt: datetime()})
+      RETURN s.name as name, s.createdAt as createdAt
+    `;
+
+        return this.executeCypherQuery(query, {name}, true);
+    }
+
+    /**
+     * Removes a security node with the given name
+     * @param {string} name - The name of the security node to remove
+     * @returns {Object} - Result of the operation
+     */
+    async removeSecurityNode(name) {
+        const query = `
+      MATCH (s:SecurityNode {name: $name})
+      DELETE s
+      RETURN count(*) as nodesDeleted
+    `;
+
+        return this.executeCypherQuery(query, {name}, true);
+    }
 }
+
 export {
-  Neo4jMemory
+    Neo4jMemory
 };

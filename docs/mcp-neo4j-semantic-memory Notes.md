@@ -24,3 +24,26 @@ The point of creating Base Semantic Ontologies is to allow natural language sema
   - We also check to see of the new Base Ontology is either a parent or a child of an existing Base Ontology, and we request that appropriate associations are made. This allows one to create a hierarchy of Base Semantic Ontologies.
 - This can be done via one call-back to the LLM to generate appropriate cypher queries.
 - Base ontologies can be created on the fly for objects as they come in, if one does not already exist.
+
+# Safe Cypher Queries
+
+The safe Cypher Queries tool is used by the LLM call-back to execute safe Cypher queries on behalf of the MCP server. A user can use it to perform non-write operations, but write operations may only be performed on behalf of this MCP server.
+
+We know that the MCP server is requesting the write operation by using a CASE expression to verify that a security node exists before the write operation is executed.
+
+- Flow...
+  - Request: Create a new Base Ontology
+    - Create single Security node with a unique name
+    - LLM Callback - Create Ontology structure (pass-in security node)
+      - Cypher uses CASE: only if security node exists...
+        - Write new Base Ontology structures
+      - Return from call-back: (Ontology Structure) Success
+    - Remove Security Node.
+    - Return new Ontology Structure to calling LLM.
+
+- Allow user to make read-only queries of mcp-memory.
+  - The user may request the LLM to query memory in various ways but won't be able to write to the memory database, at least not with this MCP service.
+  - If a cypher query comes into the safe_cypher_query function without a security_node parameter, it will return an error message write operators exist in the query.
+    - Cypher Write Operators: CREATE, SET, DELETE, REMOVE
+  - Add an environment variable to by-pass safe_cypher_queries? 
+    - NEO4J_UNSAFE_MEMORY_CYPHERS=true 

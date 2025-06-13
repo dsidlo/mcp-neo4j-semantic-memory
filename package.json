@@ -25,9 +25,9 @@
   "homepage": "https://github.com/dsidlo/mcp-neo4j-semantic-memory#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.0.1",
-    "neo4j-driver": "5.27.0",
+    "dotenv": "^16.3.1",
     "jsonc-eslint-parser": "2.4.0",
-    "dotenv": "^16.3.1"
+    "neo4j-driver": "5.27.0"
   },
   "module": "./main.js",
   "type": "module",
@@ -36,9 +36,16 @@
     "mcp-neo4j-memory-claude": "main.js"
   },
   "scripts": {
-    "start": "node main.js"
+    "start": "node main.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "engines": {
     "node": ">=16.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.28.0",
+    "eslint": "^9.28.0",
+    "globals": "^13.24.0"
   }
 }

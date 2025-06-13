@@ -24,6 +24,7 @@ This package provides a persistent memory store that allows Claude to save, retr
 - **Semantic Search**: Find relevant information and connections
 - **Contextual Memory**: Add observations to existing entities
 - **Relationship Tracing**: Track how concepts connect to each other
+- **Temporal Awareness**: All entities and observations are timestamped with creation and update times
 
 ## Installation
 
@@ -73,7 +74,8 @@ Add this to your `claude_desktop_config.json`:
       "env": {
         "NEO4J_URI": "neo4j+s://your-instance-id.databases.neo4j.io",
         "NEO4J_USER": "your_username",
-        "NEO4J_PASSWORD": "your_password"
+        "NEO4J_PASSWORD": "your_password",
+        "NEO4J_DATABASE": "optional_your_database"
       }
     }
   }
@@ -95,7 +97,8 @@ This MCP server provides the following tools for any MCP capable environment:
 | `read_graph`                  | Retrieve the entire knowledge graph                            |
 | `search_nodes`                | Find entities matching search criteria                         |
 | `open_nodes`                  | Retrieve specific entities by name                             |
-| **Additions**                 |                                                                |                       
+| **Additions**                 |                                                                |
+| `safe_cypher_query`           | Execute safe Cypher queries with security checks for writes    |
 | `create_base_ontology`        | Create a new semantic ontology                                 |
 | `create_base_ontology_rels`   | Create a semantic ontology relationships to existing objects   |
 | `create_object_relationships` | Create relationship between objects and base ontology entities |
