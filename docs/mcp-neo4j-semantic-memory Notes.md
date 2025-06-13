@@ -29,8 +29,11 @@ The point of creating Base Semantic Ontologies is to allow natural language sema
 
 ---
 
-Create the create_base_ontology mcp tool that accepts a parameters: `<subject>`, `<force_it>`<br> 
-- `<subject>`<br>
+Create the create_base_ontology mcp tool that accepts 
+- Parameters: 
+  - `<subject>`: The new Base Ontology
+  - `<force_it>`: Turns on when the user insists on the creation of the new Base Ontology
+- When this tool is called on and when we anticipate that LLM call-backs will be called to that will perform database write operations, via safe_cypher_queries, we create a unique "security-node" and pass it's name into the LLM call-back(s) so that the appropriate write operations can occur.
   - LLM callback: Check if the subject is already represented by an existing Base Ontology.<br>
     - Perform a query for the list of existing Base Ontologies.<br>
         - Check if <subject> is already represented by an existing Base Ontology.<br>
