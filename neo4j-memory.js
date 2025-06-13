@@ -1,10 +1,16 @@
 class Neo4jMemory {
-  constructor(neo4jDriver) {
+  constructor(neo4jDriver, database = "neo4j") {
+    if (!neo4jDriver) {
+      throw new Error('Neo4j driver is required');
+    }
     this.neo4jDriver = neo4jDriver;
+    this.database = database;
+    console.error(`Neo4jMemory initialized with database: ${database}`);
   }
   async loadGraph() {
-    const session = this.neo4jDriver.session();
+    const session = this.neo4jDriver.session({ database: this.database });
     try {
+      console.error(`Loading graph from database: ${this.database}`);
       const res = await session.executeRead((tx) => tx.run(`
         MATCH (entity:Memory)
         OPTIONAL MATCH (entity)-[r]->(other)
@@ -20,11 +26,18 @@ class Neo4jMemory {
         },
         { entities: [], relations: [] }
       );
-      console.error(JSON.stringify(kgMemory.entities));
-      console.error(JSON.stringify(kgMemory.relations));
+      console.error(`Loaded ${kgMemory.entities.length} entities and ${kgMemory.relations.length} relations`);
+      if (kgMemory.entities.length < 10) { // Only log details if not too many
+        console.error(`Entities: ${JSON.stringify(kgMemory.entities)}`);
+        console.error(`Relations: ${JSON.stringify(kgMemory.relations)}`);
+      }
       return kgMemory;
     } catch (error) {
-      console.error(error);
+      console.error(`Error loading graph from database ${this.database}: ${error.message}`);
+      if (error.code === 'Neo.ClientError.Database.DatabaseNotFound') {
+        console.error(`Database '${this.database}' does not exist. Please check your Neo4j installation and configuration.`);
+      }
+      throw error; // Re-throw to allow proper handling upstream
     } finally {
       await session.close();
     }
@@ -34,7 +47,7 @@ class Neo4jMemory {
     };
   }
   async saveGraph(graph) {
-    const session = this.neo4jDriver.session();
+    const session = this.neo4jDriver.session({ database: this.database });
     return session.executeWrite(async (txc) => {
       await txc.run(
         `

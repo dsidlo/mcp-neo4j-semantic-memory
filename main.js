@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import 'dotenv/config';
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -7,11 +8,55 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { driver as connectToNeo4j, auth as Neo4jAuth } from "neo4j-driver";
 import { Neo4jMemory } from "./neo4j-memory.js";
+
+// Get the database name from environment variables
+const databaseName = process.env.NEO4J_DATABASE || "neo4j";
+
+// Check if Neo4j environment variables are defined
+if (!process.env.NEO4J_URI) {
+  console.error("Error: NEO4J_URI environment variable is not defined");
+  console.error("Please set NEO4J_URI in your environment or create a .env file");
+  process.exit(1);
+}
+
+if (!process.env.NEO4J_USER || !process.env.NEO4J_PASSWORD) {
+  console.error("Error: NEO4J_USER or NEO4J_PASSWORD environment variables are not defined");
+  console.error("Please set both in your environment or create a .env file");
+  process.exit(1);
+}
+
 const neo4jDriver = connectToNeo4j(
   process.env.NEO4J_URI,
   Neo4jAuth.basic(process.env.NEO4J_USER, process.env.NEO4J_PASSWORD)
 );
-const knowledgeGraphMemory = new Neo4jMemory(neo4jDriver);
+
+// Check for multi-database support
+async function validateDatabaseSupport() {
+  try {
+    // Only validate if database specified is not the default
+    if (databaseName !== "neo4j") {
+      console.error(`Checking if Neo4j instance supports multiple databases for using '${databaseName}'...`);
+      const supportsMultiDb = await neo4jDriver.supportsMultiDb();
+      if (!supportsMultiDb) {
+        throw new Error(`This Neo4j instance does not support multiple databases. Please use the default 'neo4j' database or upgrade to Neo4j Enterprise.`);
+      }
+      console.error(`Database '${databaseName}' will be used as specified.`);
+    } else {
+      console.error(`Using default database: 'neo4j'`);
+    }
+  } catch (error) {
+    console.error(`Failed to validate database support: ${error.message}`);
+    throw error;
+  }
+}
+
+// Initialize memory with database support validation
+async function initializeMemory() {
+  await validateDatabaseSupport();
+  return new Neo4jMemory(neo4jDriver, databaseName);
+}
+
+let knowledgeGraphMemory;
 const server = new Server(
   {
     name: "mcp-neo4j-memory",
@@ -344,9 +389,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("MCP Knowledge Graph Memory using Neo4j running on stdio");
+  try {
+    // Test connection to Neo4j
+    console.error(`Connecting to Neo4j at ${process.env.NEO4J_URI}...`);
+    const serverInfo = await neo4jDriver.getServerInfo();
+    console.error(`Connected to Neo4j ${serverInfo.version} at ${process.env.NEO4J_URI}`);
+
+    // Initialize memory
+    console.error(`Initializing knowledge graph memory...`);
+    knowledgeGraphMemory = await initializeMemory();
+
+    // Start MCP server
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    console.error(`MCP Knowledge Graph Memory using Neo4j running on stdio (Database: ${databaseName})`);
+  } catch (error) {
+    console.error("Initialization error:", error.message);
+    if (error.code === 'ServiceUnavailable') {
+      console.error(`Unable to connect to Neo4j at ${process.env.NEO4J_URI}. Please check if the database is running and your connection details are correct.`);
+    }
+    process.exit(1);
+  }
 }
 main().catch((error) => {
   console.error("Fatal error in main():", error);

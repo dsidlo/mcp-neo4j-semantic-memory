@@ -17,16 +17,17 @@
     "anthropic",
     "graph-database"
   ],
-  "author": "Kinark",
+  "author": "Kinark, dsidlo",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/Kinark/mcp-neo4j-memory-claude/issues"
+    "url": "https://github.com/dsidlo/mcp-neo4j-semantic-memory/issues"
   },
-  "homepage": "https://github.com/Kinark/mcp-neo4j-memory-claude#readme",
+  "homepage": "https://github.com/dsidlo/mcp-neo4j-semantic-memory#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.0.1",
     "neo4j-driver": "5.27.0",
-    "jsonc-eslint-parser": "2.4.0"
+    "jsonc-eslint-parser": "2.4.0",
+    "dotenv": "^16.3.1"
   },
   "module": "./main.js",
   "type": "module",
