@@ -85,10 +85,10 @@ export async function createBaseOntology(memory, subject, securityNodeName) {
       Create a Base Semantic Ontology for "${subject}" including semantic entities and potential relationships between those entities.
 
       For this ontology, provide:
-      1. A comprehensive list of key entities/concepts relevant to the subject domain
-      2. Properties that might be associated with these entities
-      3. Potential relationships between entities (entity-relationship-entity pairs)
-      4. A hierarchical structure showing which concepts might be parents or children of others
+      1. A comprehensive list of key entities/concepts relevant to the subject domain (e.g., "Algorithm", "Data Structure", "Programming Language", "Operating System", "Network Protocol", "Artificial Intelligence", "Machine Learning", "Cybersecurity", "Database", "Software Engineering", "Hardware", "Computational Theory").
+      2. Properties that might be associated with these entities (e.g., for "Programming Language": "paradigm", "creator", "year_created", "use_case"; for "Algorithm": "complexity", "type", "application").
+      3. Potential relationships between entities (entity-relationship-entity pairs), ensuring a good variety of relationship types (e.g., "Programming Language" IS_USED_FOR "Software Engineering", "Algorithm" SOLVES "Problem", "Operating System" MANAGES "Hardware", "Artificial Intelligence" IS_A_FIELD_OF "Computer Science", "Machine Learning" IS_A_SUBFIELD_OF "Artificial Intelligence", "Data Structure" IS_USED_BY "Algorithm").
+      4. A hierarchical structure showing which concepts might be parents or children of others (e.g., "Computer Science" -> "Artificial Intelligence" -> "Machine Learning"; "Software Engineering" -> "Programming Language").
 
       Generate a JSON response with the following structure:
       {
