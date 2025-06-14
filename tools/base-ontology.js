@@ -121,6 +121,7 @@ export async function createBaseOntology(memory, subject, securityNodeName) {
     // Get ontology structure from LLM
     const ontologyResponse = await callLLM(ontologyPrompt);
     const ontologyStructure = ontologyResponse.json || createDefaultOntology(subject);
+    if (debugLogger) debugLogger.debugLog('createBaseOntology', { ontologyStructure }, 'info');
 
     // Now use LLM to generate the Cypher queries to create this structure
     const cypherPrompt = `
@@ -156,9 +157,11 @@ export async function createBaseOntology(memory, subject, securityNodeName) {
     `;
 
     const cypherResponse = await callLLM(cypherPrompt, { ontologyStructure });
+    if (debugLogger) debugLogger.debugLog('createBaseOntology', { rawCypherResponse: cypherResponse.text, parsedCypherResponse: cypherResponse.json }, 'info');
 
     // Execute the generated Cypher queries
     const results = [];
+    if (debugLogger) debugLogger.debugLog('createBaseOntology', { generatedQueries: cypherResponse.json?.queries }, 'info');
     for (const queryObj of cypherResponse.json?.queries || []) {
       const params = {
         subject,
