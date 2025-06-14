@@ -72,6 +72,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
         tools: [
             {
+                name: 'create_base_ontology',
+                description: 'Create a new Base Ontology in the knowledge graph with related entity types',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        subject: {
+                            type: 'string',
+                            description: 'The subject or name of the new Base Ontology'
+                        },
+                        force_it: {
+                            type: 'boolean',
+                            description: 'When true, forces creation even if a similar Base Ontology exists'
+                        }
+                    },
+                    required: ['subject']
+                }
+            },
+            {
                 name: 'safe_cypher_query',
                 description: 'Execute a Cypher query against the Neo4j database. For read-only queries, no security node is required. For write operations (CREATE, SET, DELETE, REMOVE), a valid security node name must be provided.',
                 inputSchema: {
@@ -440,6 +458,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     }
                 ]
             };
+                    case 'create_base_ontology':
+            try {
+                const { handleCreateBaseOntology } = await import('./tools/base-ontology.js');
+                const result = await handleCreateBaseOntology(knowledgeGraphMemory, args);
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: JSON.stringify(result, null, 2)
+                        }
+                    ]
+                };
+            } catch (error) {
+                console.error(`Error in create_base_ontology: ${error.message}`);
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: JSON.stringify({
+                                error: 'Error creating Base Ontology',
+                                message: error.message
+                            }, null, 2)
+                        }
+                    ]
+                };
+            }
         case 'safe_cypher_query':
             try {
                 // Import utilities for Cypher query validation
