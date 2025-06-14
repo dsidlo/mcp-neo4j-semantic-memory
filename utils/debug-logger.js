@@ -10,20 +10,20 @@ const LOG_FILE = 'mcp-semmem-debug.log';
 const LOG_PATH = path.join(LOG_DIR, LOG_FILE);
 
 // Check if logging is enabled via environment variable
-const isLoggerEnabled = process.env.MCP_SEMMEM_LOGGER !== undefined;
+const isLoggerEnabled = process.env.MCP_SEMMEM_DEBUG !== undefined;
 
 // Determine log level (default to 'info' if set without value)
-const logLevel = process.env.MCP_SEMMEM_LOGGER || 'info';
+const logLevel = process.env.MCP_SEMMEM_DEBUG || 'info';
 
-// Log the status of MCP_SEMMEM_LOGGER if it exists
+// Log the status of MCP_SEMMEM_DEBUG if it exists
 if (isLoggerEnabled) {
-  console.error(`MCP_SEMMEM_LOGGER=${logLevel} - Logging enabled at level: ${logLevel}`);
+  console.error(`MCP_SEMMEM_DEBUG=${logLevel} - Logging enabled at level: ${logLevel}`);
 } else {
-  console.error('MCP_SEMMEM_LOGGER not set - logging disabled');
+  console.error('MCP_SEMMEM_DEBUG not set - logging disabled');
 }
 
 /**
- * Logs debug information to file if MCP_SEMMEM_LOGGER is set
+ * Logs debug information to file if MCP_SEMMEM_DEBUG is set
  * @param {string} functionName - The name of the function being executed
  * @param {Object} data - Data to log
  * @param {string} [type='info'] - Log entry type (info, error, start, end)
@@ -40,7 +40,7 @@ export function debugLog(functionName, data, type = 'info') {
 
     // Check again that logger is enabled before writing
     // This ensures we don't write if the env var was removed after module load
-    if (process.env.MCP_SEMMEM_LOGGER !== undefined) {
+    if (process.env.MCP_SEMMEM_DEBUG !== undefined) {
       try {
         // Verify the log directory still exists and is writable
         if (!fs.existsSync(LOG_DIR)) {
@@ -150,7 +150,7 @@ if (isLoggerEnabled) {
 
     // Make initialization more visible with clear console messages
     console.error('=======================================================');
-    console.error(`MCP_SEMMEM_LOGGER ENABLED - Level: ${logLevel}`);
+    console.error(`MCP_SEMMEM_DEBUG ENABLED - Level: ${logLevel}`);
     console.error(`Logs writing to: ${LOG_PATH}`);
     console.error('=======================================================');
 

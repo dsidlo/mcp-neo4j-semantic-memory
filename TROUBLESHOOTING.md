@@ -36,7 +36,7 @@ If your queries are going to the default 'neo4j' database instead of using the c
 
 ## Debugging Steps
 
-1. Set `MCP_SEMMEM_DEBUG=true` in your environment to enable verbose logging
+1. Set `MCP_SEMMEM_DEBUG` in your environment to enable detailed logging. For example: `export MCP_SEMMEM_DEBUG=info`. See `docs/debugging.md` for more details on log levels.
 2. Check console output for session creation logs
 3. Verify database name is being passed correctly to session objects
 4. Try connecting directly to the database using Neo4j Browser or Cypher-shell with the same credentials
