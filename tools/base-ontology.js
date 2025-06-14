@@ -149,17 +149,22 @@ export async function createBaseOntology(memory, subject, securityNodeName) {
     // Execute the generated Cypher queries
     const results = [];
     for (const queryObj of cypherResponse.json?.queries || []) {
-      const result = await memory.safe_cypher_query({
-        query: queryObj.query,
-        securityNodeName,
-        params: {
-          subject,
-          ontologyStructureJson: JSON.stringify(ontologyStructure)
-        }
-      });
+      const params = {
+        subject,
+        ontologyStructureJson: JSON.stringify(ontologyStructure)
+      };
+      console.log('Description:', queryObj.description);
+      console.log('Query:', queryObj.query);
+      console.log('Params:', params);
+
+      const result = await memory.executeCypherQuery(
+        queryObj.query,
+        params,
+        true // This is a write operation
+      );
       results.push({
         description: queryObj.description,
-        result: result.result
+        result: result
       });
     }
 
@@ -274,11 +279,11 @@ async function createOntologyConnections(memory, subject, securityNodeName) {
 
     // Execute the connections query
     if (connectionsQuery && connectionsQuery.includes('MATCH') && connectionsQuery.includes('CREATE')) {
-      await memory.safe_cypher_query({
-        query: connectionsQuery,
-        securityNodeName,
-        params: { subject }
-      });
+      await memory.executeCypherQuery(
+        connectionsQuery,
+        { subject },
+        true
+      );
     }
   } catch (error) {
     console.error(`Error creating ontology connections: ${error.message}`);
