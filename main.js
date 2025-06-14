@@ -527,15 +527,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 // Execute the query
                 const result = await knowledgeGraphMemory.executeCypherQuery(preparedQuery, args.params || {}, isWrite);
 
+                let message;
+                if (isWrite && result.length === 0) {
+                    if (securityNodeName && !allowUnsafeQueries) {
+                        message = 'The write operation did not affect any records. This could be because the security node was not found or has expired.';
+                    } else {
+                        message = 'The write operation completed but did not affect any records.';
+                    }
+                }
+
+                const responsePayload = {
+                    result: result,
+                    rowCount: result.length,
+                    queryType: hasWriteOps ? 'write' : 'read'
+                };
+
+                if (message) {
+                    responsePayload.message = message;
+                }
+
                 return {
                     content: [
                         {
                             type: 'text',
-                            text: JSON.stringify({
-                                result: result,
-                                rowCount: result.length,
-                                queryType: hasWriteOps ? 'write' : 'read'
-                            }, (key, value) => {
+                            text: JSON.stringify(responsePayload, (key, value) => {
                                 // Format dates for readability if they look like ISO date strings
                                 if (typeof value === 'string' &&
                                     /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(value)) {
