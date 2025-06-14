@@ -7,6 +7,17 @@
 import { generateSecurityNodeName } from '../utils/uuid-utils.js';
 import { callLLM } from '../tools/llm.js';
 
+// Dynamic import for debug logger (will be a no-op if MCP_SEMMEM_DEBUG isn't set)
+let debugLogger;
+if (process.env.MCP_SEMMEM_DEBUG !== undefined) {
+  import('../utils/debug-logger.js').then(logger => {
+    debugLogger = logger;
+    debugLogger.debugLog('base-ontology.js', 'Module loaded', 'init');
+  }).catch(err => {
+    console.error(`Failed to import debug logger: ${err.message}`);
+  });
+}
+
 /**
  * Checks if a subject is already represented by an existing Base Ontology using LLM callback
  * @param {Object} memory - The Neo4jMemory instance
@@ -298,13 +309,16 @@ async function createOntologyConnections(memory, subject, securityNodeName) {
  * @returns {Object} - Result of the operation
  */
 export async function handleCreateBaseOntology(memory, args) {
+  if (debugLogger) debugLogger.logFunctionStart('handleCreateBaseOntology', args);
   const { subject, force_it } = args;
 
   if (!subject) {
-    return {
+    const result = {
       success: false,
       message: 'Missing required parameter: subject'
     };
+    if (debugLogger) debugLogger.logFunctionEnd('handleCreateBaseOntology', result);
+    return result;
   }
 
   try {
@@ -318,30 +332,37 @@ export async function handleCreateBaseOntology(memory, args) {
 
       // If it exists and force_it is not set, return a message
       if (existsResult.exists && !force_it) {
-        return {
+        const result = {
           success: false,
           message: `The subject '${subject}' is already represented by an existing Base Ontology.`,
           baseOntologies: existsResult.baseOntologies
         };
+        if (debugLogger) debugLogger.logFunctionEnd('handleCreateBaseOntology', result);
+        return result;
       }
 
       // If it doesn't exist or force_it is set, create the new Base Ontology
       const createResult = await createBaseOntology(memory, subject, securityNodeName);
 
-      return {
+      const result = {
         success: true,
         message: `Successfully created new Base Ontology for '${subject}'.`,
         details: createResult
       };
+      if (debugLogger) debugLogger.logFunctionEnd('handleCreateBaseOntology', result);
+      return result;
     } finally {
       // Always remove the security node when done
       await memory.removeSecurityNode(securityNodeName);
     }
   } catch (error) {
-    return {
+    if (debugLogger) debugLogger.logFunctionError('handleCreateBaseOntology', error);
+    const result = {
       success: false,
       message: `Error creating Base Ontology: ${error.message}`,
       error: error.toString()
     };
+    if (debugLogger) debugLogger.logFunctionEnd('handleCreateBaseOntology', result);
+    return result;
   }
 }
