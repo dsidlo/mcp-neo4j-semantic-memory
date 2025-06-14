@@ -122,22 +122,17 @@ export async function createBaseOntology(memory, subject, securityNodeName) {
          WHERE security IS NOT NULL
          [Your CREATE statements here]
 
-      2. Create the main BaseOntology node with these properties:
-         - name: "(BO): ${subject}"
-         - subject: "${subject}"
-         - createdAt: datetime()
-         - type: "BaseOntology"
-         - description: From the ontology structure
-         - structure: The entire JSON structure as a string property
+      2. Use parameters for dynamic values like $subject and $ontologyStructureJson.
 
-      3. Create each entity as a node with label matching its type and prefix each entity name with "(OE): "
-         For example, if the entity name is "Algorithm", use "(OE): Algorithm" as the actual name in the node
+      3. Create the main BaseOntology node with the label \`BaseOntology\` and these properties: \`name\` (prefixed with \`(BO): \`), \`subject\`, \`createdAt\`, \`type\` (set to "BaseOntology"), \`description\`, and \`structure\` (which should store the entire \`ontologyStructure\` JSON as a string, using a parameter like \`$ontologyStructureJson\`).
 
-      4. Create relationships between entities as specified
+      4. For entities, create nodes with the label \`OntologyEntity\` and prefix their \`name\` property with \`(OE): \`.
 
-      5. Create parent-child relationships between the BaseOntology and all entities
+      5. For relationships between entities, create them with the label \`OntologyRelationship\` and use the \`type\` property from the \`relationships\` array.
 
-      6. Create hierarchical relationships between entities as specified
+      6. For parent-child relationships between the BaseOntology and its entities, create \`HAS_ENTITY\` relationships from the \`BaseOntology\` node to each \`OntologyEntity\` node.
+
+      7. For hierarchical relationships between entities, use the specified relationship types (e.g., \`PARENT_OF\`, \`CHILD_OF\`, \`RELATED_TO\`).
 
       Return a JSON object with the following structure:
       {
@@ -150,29 +145,17 @@ export async function createBaseOntology(memory, subject, securityNodeName) {
     `;
 
     const cypherResponse = await callLLM(cypherPrompt, { ontologyStructure });
-    const cypherQueries = cypherResponse.json?.queries || [];
 
     // Execute the generated Cypher queries
     const results = [];
-    for (const queryObj of cypherQueries) {
-      // Update the query to ensure proper prefixing if it wasn't done by the LLM
-      let processedQuery = queryObj.query
-        .replace(/(CREATE\s*\([^)]*\bname\s*:\s*['"])([^'"]*)/gi, (match, prefix, name) => {
-          // If it's the BaseOntology node and doesn't already have the prefix
-          if (match.includes('BaseOntology') && !name.includes('(BO): ')) {
-            return `${prefix}(BO): ${name}`;
-          }
-          // If it's an entity node and doesn't already have the prefix
-          else if (!match.includes('BaseOntology') && !name.includes('(OE): ')) {
-            return `${prefix}(OE): ${name}`;
-          }
-          return match;
-        });
-
+    for (const queryObj of cypherResponse.json?.queries || []) {
       const result = await memory.safe_cypher_query({
-        query: processedQuery,
+        query: queryObj.query,
         securityNodeName,
-        params: { subject, ontologyStructure: JSON.stringify(ontologyStructure) }
+        params: {
+          subject,
+          ontologyStructureJson: JSON.stringify(ontologyStructure)
+        }
       });
       results.push({
         description: queryObj.description,
