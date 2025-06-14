@@ -1,0 +1,359 @@
+/**
+ * Base Ontology Tool Implementation
+ * 
+ * This module provides functions for creating and managing base ontologies in the knowledge graph
+ */
+
+import { generateSecurityNodeName } from '../utils/uuid-utils.js';
+import { callLLM } from '../tools/llm.js';
+
+/**
+ * Checks if a subject is already represented by an existing Base Ontology using LLM callback
+ * @param {Object} memory - The Neo4jMemory instance
+ * @param {string} subject - The subject to check
+ * @returns {Object} - Result with existence status and details
+ */
+export async function checkBaseOntologyExists(memory, subject) {
+  try {
+    // First, get all existing base ontologies
+    const query = `
+      MATCH (bo:BaseOntology)
+      RETURN bo
+    `;
+
+    const existingOntologies = await memory.executeCypherQuery(query, {}, false);
+
+    // Use LLM callback to determine if the subject is already represented
+    const prompt = `
+      You are a knowledge graph expert tasked with determining if a subject is already represented by an existing Base Ontology.
+
+      Subject: "${subject}"
+
+      Given the list of existing Base Ontologies, determine if the subject is already represented by any of them.
+      Consider semantic similarity, not just exact matches. For example, "Machine Learning" might be represented by "AI" or "Artificial Intelligence".
+
+      Return a JSON object with the following structure:
+      {
+        "isRepresented": boolean,
+        "representedBy": [list of matching ontology names] or null if not represented,
+        "confidence": number between 0 and 1,
+        "reasoning": "brief explanation of your reasoning"
+      }
+    `;
+
+    const llmResponse = await callLLM(prompt, { existingOntologies });
+
+    // Process the LLM response
+    const result = llmResponse.json || { isRepresented: false };
+
+    return {
+      exists: result.isRepresented,
+      baseOntologies: result.representedBy ? existingOntologies.filter(o => 
+        result.representedBy.includes(o.bo.name || o.bo.subject)
+      ) : [],
+      confidence: result.confidence,
+      reasoning: result.reasoning
+    };
+  } catch (error) {
+    console.error(`Error checking if base ontology exists: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Creates a new Base Ontology and related entities using LLM callback
+ * @param {Object} memory - The Neo4jMemory instance
+ * @param {string} subject - The subject for the new Base Ontology
+ * @param {string} securityNodeName - The security node name for write operations
+ * @returns {Object} - Result of the creation operation
+ */
+export async function createBaseOntology(memory, subject, securityNodeName) {
+  try {
+    // Use LLM callback to generate the ontology structure
+    const ontologyPrompt = `
+      Create a Base Semantic Ontology for "${subject}" including semantic entities and potential relationships between those entities.
+
+      For this ontology, provide:
+      1. A comprehensive list of key entities/concepts relevant to the subject domain
+      2. Properties that might be associated with these entities
+      3. Potential relationships between entities (entity-relationship-entity pairs)
+      4. A hierarchical structure showing which concepts might be parents or children of others
+
+      Generate a JSON response with the following structure:
+      {
+        "name": "${subject}",
+        "description": "[Brief description of this ontology]",
+        "entities": [
+          {
+            "name": "[Entity Name]",
+            "type": "[Entity Type]",
+            "description": "[Description]"
+          }
+        ],
+        "relationships": [
+          {
+            "from": "[Source Entity]",
+            "type": "[Relationship Type]",
+            "to": "[Target Entity]",
+            "description": "[Description of relationship]"
+          }
+        ],
+        "hierarchy": [
+          {
+            "parent": "[Parent Entity]",
+            "children": ["[Child Entity1]", "[Child Entity2]"]
+          }
+        ]
+      }
+    `;
+
+    // Get ontology structure from LLM
+    const ontologyResponse = await callLLM(ontologyPrompt);
+    const ontologyStructure = ontologyResponse.json || createDefaultOntology(subject);
+
+    // Now use LLM to generate the Cypher queries to create this structure
+    const cypherPrompt = `
+      You are a Neo4j and Cypher expert. Generate the Cypher queries needed to create the following ontology structure in a Neo4j database.
+
+      Important requirements:
+      1. All CREATE operations must be wrapped with a security check:
+         MATCH (security:SecurityNode {name: "${securityNodeName}"})
+         WITH security
+         WHERE security IS NOT NULL
+         [Your CREATE statements here]
+
+      2. Create the main BaseOntology node with these properties:
+         - name: "(BO): ${subject}"
+         - subject: "${subject}"
+         - createdAt: datetime()
+         - type: "BaseOntology"
+         - description: From the ontology structure
+         - structure: The entire JSON structure as a string property
+
+      3. Create each entity as a node with label matching its type and prefix each entity name with "(OE): "
+         For example, if the entity name is "Algorithm", use "(OE): Algorithm" as the actual name in the node
+
+      4. Create relationships between entities as specified
+
+      5. Create parent-child relationships between the BaseOntology and all entities
+
+      6. Create hierarchical relationships between entities as specified
+
+      Return a JSON object with the following structure:
+      {
+        "queries": [
+          { "description": "Create base ontology node", "query": "[Cypher query]" },
+          { "description": "Create entity nodes", "query": "[Cypher query]" },
+          { "description": "Create relationships", "query": "[Cypher query]" }
+        ]
+      }
+    `;
+
+    const cypherResponse = await callLLM(cypherPrompt, { ontologyStructure });
+    const cypherQueries = cypherResponse.json?.queries || [];
+
+    // Execute the generated Cypher queries
+    const results = [];
+    for (const queryObj of cypherQueries) {
+      // Update the query to ensure proper prefixing if it wasn't done by the LLM
+      let processedQuery = queryObj.query
+        .replace(/(CREATE\s*\([^)]*\bname\s*:\s*['"])([^'"]*)/gi, (match, prefix, name) => {
+          // If it's the BaseOntology node and doesn't already have the prefix
+          if (match.includes('BaseOntology') && !name.includes('(BO): ')) {
+            return `${prefix}(BO): ${name}`;
+          }
+          // If it's an entity node and doesn't already have the prefix
+          else if (!match.includes('BaseOntology') && !name.includes('(OE): ')) {
+            return `${prefix}(OE): ${name}`;
+          }
+          return match;
+        });
+
+      const result = await memory.safe_cypher_query({
+        query: processedQuery,
+        securityNodeName,
+        params: { subject, ontologyStructure: JSON.stringify(ontologyStructure) }
+      });
+      results.push({
+        description: queryObj.description,
+        result: result.result
+      });
+    }
+
+    // Finally, check for related ontologies and create connections
+    await createOntologyConnections(memory, subject, securityNodeName);
+
+    return {
+      baseOntology: { name: subject, description: ontologyStructure.description },
+      ontologyStructure,
+      executionResults: results,
+      success: true,
+      message: `Created Base Ontology '${subject}' with ${ontologyStructure.entities?.length || 0} entities and ${ontologyStructure.relationships?.length || 0} relationships`
+    };
+  } catch (error) {
+    console.error(`Error creating base ontology: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Creates a default ontology structure if LLM response fails
+ * @param {string} subject - The subject for the ontology
+ * @returns {Object} - A default ontology structure
+ */
+function createDefaultOntology(subject) {
+  return {
+    name: `(BO): ${subject}`,
+    description: `Base Ontology for ${subject}`,
+    entities: [
+      { name: '(OE): Concept', type: 'EntityType', description: `A concept within the ${subject} domain` },
+      { name: '(OE): Property', type: 'EntityType', description: `A property in the ${subject} domain` },
+      { name: '(OE): Relationship', type: 'EntityType', description: `A relationship in the ${subject} domain` }
+    ],
+    relationships: [],
+    hierarchy: []
+  };
+}
+
+/**
+ * Checks for related ontologies and creates connections using LLM
+ * @param {Object} memory - The Neo4jMemory instance
+ * @param {string} subject - The subject of the ontology
+ * @param {string} securityNodeName - The security node name
+ */
+async function createOntologyConnections(memory, subject, securityNodeName) {
+  try {
+    // Get all existing ontologies
+    const query = `
+      MATCH (bo:BaseOntology)
+      WHERE bo.subject <> $subject
+      RETURN bo
+    `;
+
+    const existingOntologies = await memory.executeCypherQuery(query, { subject }, false);
+
+    if (existingOntologies.length === 0) return;
+
+    // Use LLM to determine relationships with other ontologies
+    const connectionsPrompt = `
+      You are a knowledge graph expert tasked with determining the relationships between ontologies.
+
+      New Ontology: "${subject}"
+
+      Determine if the new ontology should be connected to any existing ontologies as a parent or child.
+      Consider semantic relationships and domain hierarchies.
+
+      Return a JSON object with the following structure:
+      {
+        "connections": [
+          {
+            "existingOntology": "[Ontology Name]",
+            "relationship": "parent" or "child" or "related",
+            "confidence": number between 0 and 1,
+            "reasoning": "brief explanation"
+          }
+        ]
+      }
+    `;
+
+    const connectionsResponse = await callLLM(connectionsPrompt, { existingOntologies });
+    const connections = connectionsResponse.json?.connections || [];
+
+    // Filter for high-confidence connections
+    const highConfidenceConnections = connections.filter(c => c.confidence > 0.7);
+
+    if (highConfidenceConnections.length === 0) return;
+
+    // Generate Cypher query to create the connections
+    const connectionsCypherPrompt = `
+      Generate a Cypher query to create the following ontology connections:
+
+      New Ontology: "${subject}"
+
+      Connections to create:
+      ${JSON.stringify(highConfidenceConnections, null, 2)}
+
+      For parent relationships, create a "PARENT_OF" relationship from the parent to the child.
+      For child relationships, create a "CHILD_OF" relationship from the child to the parent.
+      For related relationships, create a "RELATED_TO" relationship in both directions.
+
+      Remember to include the security node check:
+      MATCH (security:SecurityNode {name: "${securityNodeName}"})
+      WITH security
+      WHERE security IS NOT NULL
+      [Your CREATE statements here]
+
+      Return just the Cypher query as plain text.
+    `;
+
+    const connectionsCypherResponse = await callLLM(connectionsCypherPrompt);
+    const connectionsQuery = connectionsCypherResponse.text;
+
+    // Execute the connections query
+    if (connectionsQuery && connectionsQuery.includes('MATCH') && connectionsQuery.includes('CREATE')) {
+      await memory.safe_cypher_query({
+        query: connectionsQuery,
+        securityNodeName,
+        params: { subject }
+      });
+    }
+  } catch (error) {
+    console.error(`Error creating ontology connections: ${error.message}`);
+    // Don't throw, as this is a non-critical operation
+  }
+}
+
+/**
+ * Main function to handle the create_base_ontology tool request
+ * @param {Object} memory - The Neo4jMemory instance
+ * @param {Object} args - The tool arguments
+ * @returns {Object} - Result of the operation
+ */
+export async function handleCreateBaseOntology(memory, args) {
+  const { subject, force_it } = args;
+
+  if (!subject) {
+    return {
+      success: false,
+      message: 'Missing required parameter: subject'
+    };
+  }
+
+  try {
+    // Create a security node for write operations
+    const securityNodeName = generateSecurityNodeName();
+    await memory.createSecurityNode(securityNodeName);
+
+    try {
+      // First, check if the subject is already represented by an existing Base Ontology
+      const existsResult = await checkBaseOntologyExists(memory, subject);
+
+      // If it exists and force_it is not set, return a message
+      if (existsResult.exists && !force_it) {
+        return {
+          success: false,
+          message: `The subject '${subject}' is already represented by an existing Base Ontology.`,
+          baseOntologies: existsResult.baseOntologies
+        };
+      }
+
+      // If it doesn't exist or force_it is set, create the new Base Ontology
+      const createResult = await createBaseOntology(memory, subject, securityNodeName);
+
+      return {
+        success: true,
+        message: `Successfully created new Base Ontology for '${subject}'.`,
+        details: createResult
+      };
+    } finally {
+      // Always remove the security node when done
+      await memory.removeSecurityNode(securityNodeName);
+    }
+  } catch (error) {
+    return {
+      success: false,
+      message: `Error creating Base Ontology: ${error.message}`,
+      error: error.toString()
+    };
+  }
+}
