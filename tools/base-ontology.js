@@ -82,11 +82,18 @@ export async function checkBaseOntologyExists(memory, subject) {
 export async function createBaseOntology(memory, subject, parent, securityNodeName) {
   try {
     // Use LLM callback to generate the ontology structure
-    const ontologyPrompt = `
+    let ontologyPrompt = `
       Create a Base Semantic Ontology for "${subject}" including semantic entities and potential relationships between those entities.
       Base Ontologies are prefixed with "(BO):".
       A Base Ontologies Entities are prefixed with "(OE):".
+    `;
 
+    if (parent) {
+      const normalizedParentName = parent.replace(/^\(BO\): /, '');
+      ontologyPrompt += `\n\nThis new ontology should be a child of the existing ontology: "${normalizedParentName}". Please tailor the entities and relationships to fit within this parent context.`;
+    }
+
+    ontologyPrompt += `
       For this ontology, provide:
       1. A comprehensive list of key entities/concepts relevant to the subject domain (e.g., "Algorithm", "Data Structure", "Programming Language", "Operating System", "Network Protocol", "Artificial Intelligence", "Machine Learning", "Cybersecurity", "Database", "Software Engineering", "Hardware", "Computational Theory").
       2. Properties that might be associated with these entities (e.g., for "Programming Language": "paradigm", "creator", "year_created", "use_case"; for "Algorithm": "complexity", "type", "application").
@@ -251,6 +258,33 @@ export async function createBaseOntology(memory, subject, parent, securityNodeNa
       });
     }
 
+    // If a parent is specified, create the relationship
+    if (parent) {
+      const normalizedParentName = parent.replace(/^\(BO\): /, '');
+      const relationshipQuery = `
+        MATCH (security:SecurityNode {name: $securityNodeName})
+        WITH security
+        WHERE security IS NOT NULL
+        MATCH (child:BaseOntology {subject: $subject})
+        MATCH (parentBo:BaseOntology {subject: $parentName})
+        MERGE (parentBo)-[:PARENT_OF]->(child)
+        MERGE (child)-[:CHILD_OF]->(parentBo)
+      `;
+      const relationshipResult = await memory.executeCypherQuery(
+        relationshipQuery,
+        {
+          securityNodeName,
+          subject,
+          parentName: normalizedParentName
+        },
+        true // It's a write operation
+      );
+      results.push({
+        description: 'Create parent-child relationship',
+        result: relationshipResult
+      });
+    }
+
     // Finally, check for related ontologies and create connections
     await createOntologyConnections(memory, subject, securityNodeName);
 
@@ -379,10 +413,12 @@ async function createOntologyConnections(memory, subject, securityNodeName) {
  * @param {Object} memory - The Neo4jMemory instance
  * @param {Object} args - The tool arguments
  * @returns {Object} - Result of the operation
+* @param {Object} args - The tool arguments
+* @returns {Object} - Result of the operation
  */
 export async function handleCreateBaseOntology(memory, args) {
   if (debugLogger) debugLogger.logFunctionStart('handleCreateBaseOntology', args);
-  const { subject, force_it } = args;
+  const { subject, parent, force_it } = args;
 
   if (!subject) {
     const result = {
@@ -394,6 +430,27 @@ export async function handleCreateBaseOntology(memory, args) {
   }
 
   try {
+    // If a parent is specified, verify it exists first
+    if (parent) {
+      // Normalize parent name by removing prefix if it exists
+      const normalizedParentName = parent.replace(/^\(BO\): /, '');
+      const parentCheckQuery = `MATCH (p:BaseOntology {subject: $parentName}) RETURN p`;
+      const parentResult = await memory.executeCypherQuery(
+        parentCheckQuery,
+        { parentName: normalizedParentName },
+        false // Read operation
+      );
+
+      if (parentResult.length === 0) {
+        const result = {
+          success: false,
+          message: `The specified parent ontology '${parent}' does not exist.`
+        };
+        if (debugLogger) debugLogger.logFunctionEnd('handleCreateBaseOntology', result);
+        return result;
+      }
+    }
+
     // Create a security node for write operations
     const securityNodeName = generateSecurityNodeName();
     await memory.createSecurityNode(securityNodeName);
@@ -414,7 +471,7 @@ export async function handleCreateBaseOntology(memory, args) {
       }
 
       // If it doesn't exist or force_it is set, create the new Base Ontology
-      const createResult = await createBaseOntology(memory, subject, securityNodeName);
+      const createResult = await createBaseOntology(memory, subject, parent, securityNodeName);
 
       const result = {
         success: true,
