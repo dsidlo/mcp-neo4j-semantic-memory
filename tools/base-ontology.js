@@ -42,7 +42,8 @@ export async function checkBaseOntologyExists(memory, subject) {
 
       Given the list of existing Base Ontologies, determine if the subject is already represented by any of them.
       Consider semantic similarity, not just exact matches. For example, "Machine Learning" might be represented by "AI" or "Artificial Intelligence".
-
+      Base Ontologies are prefixed with "(BO):".
+      
       Return a JSON object with the following structure:
       {
         "isRepresented": boolean,
@@ -78,11 +79,13 @@ export async function checkBaseOntologyExists(memory, subject) {
  * @param {string} securityNodeName - The security node name for write operations
  * @returns {Object} - Result of the creation operation
  */
-export async function createBaseOntology(memory, subject, securityNodeName) {
+export async function createBaseOntology(memory, subject, parent, securityNodeName) {
   try {
     // Use LLM callback to generate the ontology structure
     const ontologyPrompt = `
       Create a Base Semantic Ontology for "${subject}" including semantic entities and potential relationships between those entities.
+      Base Ontologies are prefixed with "(BO):".
+      A Base Ontologies Entities are prefixed with "(OE):".
 
       For this ontology, provide:
       1. A comprehensive list of key entities/concepts relevant to the subject domain (e.g., "Algorithm", "Data Structure", "Programming Language", "Operating System", "Network Protocol", "Artificial Intelligence", "Machine Learning", "Cybersecurity", "Database", "Software Engineering", "Hardware", "Computational Theory").
@@ -90,29 +93,67 @@ export async function createBaseOntology(memory, subject, securityNodeName) {
       3. Potential relationships between entities (entity-relationship-entity pairs), ensuring a good variety of relationship types (e.g., "Programming Language" IS_USED_FOR "Software Engineering", "Algorithm" SOLVES "Problem", "Operating System" MANAGES "Hardware", "Artificial Intelligence" IS_A_FIELD_OF "Computer Science", "Machine Learning" IS_A_SUBFIELD_OF "Artificial Intelligence", "Data Structure" IS_USED_BY "Algorithm").
       4. A hierarchical structure showing which concepts might be parents or children of others (e.g., "Computer Science" -> "Artificial Intelligence" -> "Machine Learning"; "Software Engineering" -> "Programming Language").
 
-      Generate a JSON response with the following structure:
+      Generate a JSON response with the following structure. You MUST populate the 'entities' and 'relationships' arrays with concrete data for "Computer Science", not placeholders. Strictly adhere to the provided JSON structure and populate it with actual Computer Science concepts and relationships.
+
+      Example for "Computer Science" ontology:
       {
-        "name": "${subject}",
-        "description": "[Brief description of this ontology]",
+        "name": "Computer Science",
+        "description": "A foundational ontology for the field of Computer Science, covering core concepts, areas, and their interconnections.",
         "entities": [
           {
-            "name": "[Entity Name]",
-            "type": "[Entity Type]",
-            "description": "[Description]"
+            "name": "Algorithm",
+            "type": "Concept",
+            "description": "A set of rules or instructions to be followed in calculations or other problem-solving operations."
+          },
+          {
+            "name": "Data Structure",
+            "type": "Concept",
+            "description": "A particular way of organizing data in a computer so that it can be used efficiently."
+          },
+          {
+            "name": "Programming Language",
+            "type": "Concept",
+            "description": "A formal language comprising a set of instructions that produce various kinds of output."
+          },
+          {
+            "name": "Artificial Intelligence",
+            "type": "Field",
+            "description": "The theory and development of computer systems able to perform tasks normally requiring human intelligence."
+          },
+          {
+            "name": "Machine Learning",
+            "type": "Subfield",
+            "description": "A subfield of artificial intelligence that enables systems to learn from data without explicit programming."
           }
         ],
         "relationships": [
           {
-            "from": "[Source Entity]",
-            "type": "[Relationship Type]",
-            "to": "[Target Entity]",
-            "description": "[Description of relationship]"
+            "from": "Algorithm",
+            "type": "USES",
+            "to": "Data Structure",
+            "description": "Algorithms often utilize specific data structures for efficient operation."
+          },
+          {
+            "from": "Programming Language",
+            "type": "IMPLEMENTS",
+            "to": "Algorithm",
+            "description": "Algorithms are implemented using programming languages."
+          },
+          {
+            "from": "Artificial Intelligence",
+            "type": "HAS_SUBFIELD",
+            "to": "Machine Learning",
+            "description": "Machine Learning is a prominent subfield of Artificial Intelligence."
           }
         ],
         "hierarchy": [
           {
-            "parent": "[Parent Entity]",
-            "children": ["[Child Entity1]", "[Child Entity2]"]
+            "parent": "Computer Science",
+            "children": ["Algorithm", "Data Structure", "Programming Language", "Artificial Intelligence"]
+          },
+          {
+            "parent": "Artificial Intelligence",
+            "children": ["Machine Learning"]
           }
         ]
       }
@@ -127,23 +168,21 @@ export async function createBaseOntology(memory, subject, securityNodeName) {
     const cypherPrompt = `
       You are a Neo4j and Cypher expert. Generate the Cypher queries needed to create the following ontology structure in a Neo4j database.
 
+      <ontologyStructure>
+      ${JSON.stringify(ontologyStructure, null, 2)}
+      </ontologyStructure>
+
       Important requirements:
       1. All CREATE operations must be wrapped with a security check:
          MATCH (security:SecurityNode {name: "${securityNodeName}"})
          WITH security
          WHERE security IS NOT NULL
          [Your CREATE statements here]
-
       2. Use parameters for dynamic values like $subject and $ontologyStructureJson.
-
       3. Create the main BaseOntology node with the label \`BaseOntology\` and these properties: \`name\` (prefixed with \`(BO): \`), \`subject\`, \`createdAt\`, \`type\` (set to "BaseOntology"), \`description\`, and \`structure\` (which should store the entire \`ontologyStructure\` JSON as a string, using a parameter like \`$ontologyStructureJson\`).
-
       4. For entities, create nodes with the label \`OntologyEntity\` and prefix their \`name\` property with \`(OE): \`.
-
       5. For relationships between entities, create them with the label \`OntologyRelationship\` and use the \`type\` property from the \`relationships\` array.
-
       6. For parent-child relationships between the BaseOntology and its entities, create \`HAS_ENTITY\` relationships from the \`BaseOntology\` node to each \`OntologyEntity\` node.
-
       7. For hierarchical relationships between entities, use the specified relationship types (e.g., \`PARENT_OF\`, \`CHILD_OF\`, \`RELATED_TO\`).
 
       Return a JSON object with the following structure:
@@ -157,12 +196,42 @@ export async function createBaseOntology(memory, subject, securityNodeName) {
     `;
 
     const cypherResponse = await callLLM(cypherPrompt, { ontologyStructure });
-    if (debugLogger) debugLogger.debugLog('createBaseOntology', { rawCypherResponse: cypherResponse.text, parsedCypherResponse: cypherResponse.json }, 'info');
+
+    // Extract JSON from markdown code block if present
+    const extractJsonFromMarkdown = (markdownString) => {
+      if (!markdownString) return null;
+      const match = markdownString.match(/```json\s*([\s\S]*?)\s*```/i);
+      return match ? match[1] : null;
+    };
+
+    // Parse extracted JSON or use the json property directly
+    let parsedCypherResponse = cypherResponse.json;
+    if (!parsedCypherResponse && cypherResponse.text) {
+      const extractedJson = extractJsonFromMarkdown(cypherResponse.text);
+      try {
+        if (extractedJson) {
+          parsedCypherResponse = JSON.parse(extractedJson);
+        }
+      } catch (e) {
+        console.error(`Failed to parse JSON from Cypher response: ${e.message}`);
+      }
+    }
+
+    // Log both raw and parsed response
+    if (debugLogger) {
+      debugLogger.debugLog('createBaseOntology', { 
+        rawCypherResponse: cypherResponse.text,
+        extractedCypherJson: parsedCypherResponse ? JSON.stringify(parsedCypherResponse, null, 2) : null
+      }, 'info');
+    }
 
     // Execute the generated Cypher queries
     const results = [];
-    if (debugLogger) debugLogger.debugLog('createBaseOntology', { generatedQueries: cypherResponse.json?.queries }, 'info');
-    for (const queryObj of cypherResponse.json?.queries || []) {
+    if (debugLogger) debugLogger.debugLog('createBaseOntology', { generatedQueries: parsedCypherResponse?.queries || cypherResponse.json?.queries }, 'info');
+
+    // Use the parsed response if available, otherwise fall back to cypherResponse.json
+    const queriesToExecute = parsedCypherResponse?.queries || cypherResponse.json?.queries || [];
+    for (const queryObj of queriesToExecute) {
       const params = {
         subject,
         ontologyStructureJson: JSON.stringify(ontologyStructure)
