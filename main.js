@@ -109,7 +109,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: 'safe_cypher_query',
-                description: 'Execute a Cypher query against the Neo4j database. For read-only queries, no security node is required. For write operations (CREATE, SET, DELETE, REMOVE), a valid security node name must be provided.',
+                description: 'Execute a Cypher query against the Neo4j database. For read-only queries, no security node is required. For write operations (CREATE, SET, DELETE, REMOVE, MERGE), a valid security node name must be provided.',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -119,7 +119,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         },
                         securityNodeName: {
                             type: 'string',
-                            description: 'The name of the security node to verify before executing write operations. Required for write operations (CREATE, SET, DELETE, REMOVE).'
+                            description: 'The name of the security node to verify before executing write operations. Required for write operations (CREATE, SET, DELETE, REMOVE, MERGE).'
                         },
                         params: {
                             type: 'object',
@@ -523,7 +523,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                             {
                                 type: 'text',
                                 text: JSON.stringify({
-                                    error: 'Security error: Write operations (CREATE, SET, DELETE, REMOVE) detected but no security node provided.',
+                                    error: 'Security error: Write operations (CREATE, SET, DELETE, REMOVE, MERGE) detected but no security node provided.',
                                     details: 'This API requires a valid security token for write operations.'
                                 }, null, 2)
                             }

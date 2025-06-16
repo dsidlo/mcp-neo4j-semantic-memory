@@ -7,7 +7,7 @@ The `safe_cypher_query` tool allows for executing Cypher queries against the Neo
 Cypher is Neo4j's query language for describing and querying graph data. The `safe_cypher_query` tool enables:
 
 1. Executing read-only queries (e.g., `MATCH`, `RETURN`) without special permissions
-2. Executing write operations (`CREATE`, `SET`, `DELETE`, `REMOVE`) only with a valid security token
+2. Executing write operations (`CREATE`, `SET`, `DELETE`, `REMOVE`, `MERGE`) only with a valid security token
 
 ## Usage
 
@@ -52,7 +52,7 @@ Parameters can be passed to make queries more flexible and secure:
 
 For write operations, the tool follows this security flow:
 
-1. Checks if the query contains write operations (`CREATE`, `SET`, `DELETE`, `REMOVE`)
+1. Checks if the query contains write operations (`CREATE`, `SET`, `DELETE`, `REMOVE`, `MERGE`)
 2. If it does, requires a `securityNodeName` parameter
 3. Wraps the write query with a security check that only executes if the specified SecurityNode exists
 4. The SecurityNode is typically created and deleted by internal MCP processes, not by external users
