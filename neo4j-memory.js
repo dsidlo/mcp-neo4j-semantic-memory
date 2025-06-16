@@ -33,7 +33,18 @@ class Neo4jMemory {
                 (kg, row) => {
                     const entityNode = row.get('entity');
                     const entityRelationships = row.get('relations');
-                    kg.entities.push(entityNode.properties);
+
+                    // Manually convert properties to handle Neo4j data types
+                    const entityProps = {};
+                    for (const [key, value] of Object.entries(entityNode.properties)) {
+                        if (value && typeof value === 'object' && value.constructor.name === 'DateTime') {
+                            entityProps[key] = value.toString();
+                        } else {
+                            entityProps[key] = value;
+                        }
+                    }
+                    kg.entities.push(entityProps);
+
                     kg.relations.push(...entityRelationships.map((r) => r.properties));
                     return kg;
                 },
