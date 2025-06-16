@@ -125,10 +125,21 @@ class Neo4jMemory {
             return processedEntity;
         });
 
-        const newEntities = processedEntities.filter((e) => !graph.entities.some((existingEntity) => existingEntity.name === e.name));
-        graph.entities.push(...newEntities);
+        // Upsert logic: update existing entities or add new ones
+        processedEntities.forEach(entityToUpsert => {
+            const existingEntityIndex = graph.entities.findIndex(e => e.name === entityToUpsert.name);
+            if (existingEntityIndex !== -1) {
+                // Update existing entity by replacing it
+                graph.entities[existingEntityIndex] = entityToUpsert;
+            } else {
+                // Add new entity
+                graph.entities.push(entityToUpsert);
+            }
+        });
+
         await this.saveGraph(graph);
-        return newEntities;
+        // Return the entities that were processed
+        return processedEntities;
     }
 
     async createRelations(relations) {
