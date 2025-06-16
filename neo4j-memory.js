@@ -73,8 +73,7 @@ class Neo4jMemory {
         const processedGraph = JSON.parse(JSON.stringify(graph));
 
         return session.executeWrite(async (txc) => {
-            await txc.run(
-                `
+            const entitiesQuery = `
         UNWIND $memoryGraph.entities as entity
         MERGE (entityMemory:Memory { entityID: entity.name })
         ON CREATE SET
@@ -84,7 +83,15 @@ class Neo4jMemory {
         ON MATCH SET
           entityMemory += entity,
           entityMemory.updatedAt = datetime({timezone: 'UTC'})
-        `,
+        `;
+            if (this.debugLogger) {
+                this.debugLogger.debugLog('Neo4jMemory.saveGraph', {
+                    query: entitiesQuery,
+                    params: { memoryGraph: processedGraph }
+                }, 'cypher');
+            }
+            await txc.run(
+                entitiesQuery,
                 {
                     memoryGraph: processedGraph
                 }
