@@ -11,7 +11,7 @@ class Neo4jMemory {
         // This will be a no-op if MCP_SEMMEM_DEBUG is not set
         import('./utils/debug-logger.js').then(logger => {
             this.debugLogger = logger;
-            this.debugLogger.debugLog('Neo4jMemory.constructor', { database }, 'init');
+            this.debugLogger.debugLog('Neo4jMemory.constructor', {database}, 'init');
         }).catch(err => {
             console.error(`Failed to import debug logger: ${err.message}`);
         });
@@ -23,7 +23,7 @@ class Neo4jMemory {
         const session = this.neo4jDriver.session({database: this.database});
         try {
             console.error(`Loading graph from database: '${this.database}'`);
-            if (this.debugLogger) this.debugLogger.debugLog('Neo4jMemory.loadGraph', { query: 'MATCH (entity:Memory) OPTIONAL MATCH (entity)-[r]->(other) RETURN entity, collect(r) as relations' });
+            if (this.debugLogger) this.debugLogger.debugLog('Neo4jMemory.loadGraph', {query: 'MATCH (entity:Memory) OPTIONAL MATCH (entity)-[r]->(other) RETURN entity, collect(r) as relations'});
             const res = await session.executeRead((tx) => tx.run(`
         MATCH (entity:Memory)
         OPTIONAL MATCH (entity)-[r]->(other)
@@ -44,7 +44,10 @@ class Neo4jMemory {
                 console.error(`Entities: ${JSON.stringify(kgMemory.entities)}`);
                 console.error(`Relations: ${JSON.stringify(kgMemory.relations)}`);
             }
-            if (this.debugLogger) this.debugLogger.logFunctionEnd('Neo4jMemory.loadGraph', { entityCount: kgMemory.entities.length, relationCount: kgMemory.relations.length });
+            if (this.debugLogger) this.debugLogger.logFunctionEnd('Neo4jMemory.loadGraph', {
+                entityCount: kgMemory.entities.length,
+                relationCount: kgMemory.relations.length
+            });
             return kgMemory;
         } catch (error) {
             console.error(`Error loading graph from database ${this.database}: ${error.message}`);
@@ -59,8 +62,12 @@ class Neo4jMemory {
         // Unreachable code removed
     }
 
-            async saveGraph(graph, tz = 'UTC') {
-        if (this.debugLogger) this.debugLogger.logFunctionStart('Neo4jMemory.saveGraph', { entityCount: graph.entities.length, relationCount: graph.relations.length, tz });
+    async saveGraph(graph, tz = 'UTC') {
+        if (this.debugLogger) this.debugLogger.logFunctionStart('Neo4jMemory.saveGraph', {
+            entityCount: graph.entities.length,
+            relationCount: graph.relations.length,
+            tz
+        });
         const session = this.neo4jDriver.session({database: this.database});
 
         // Create a deep copy of the graph
@@ -96,7 +103,7 @@ class Neo4jMemory {
                     memoryGraph: graph
                 }
             );
-            if (this.debugLogger) this.debugLogger.logFunctionEnd('Neo4jMemory.saveGraph', { success: true });
+            if (this.debugLogger) this.debugLogger.logFunctionEnd('Neo4jMemory.saveGraph', {success: true});
             return 'Graph saved successfully';
         }).catch(error => {
             if (this.debugLogger) this.debugLogger.logFunctionError('Neo4jMemory.saveGraph', error);
@@ -104,7 +111,7 @@ class Neo4jMemory {
         });
     }
 
-            async createEntities(entities, tz) {
+    async createEntities(entities, tz) {
         const graph = await this.loadGraph();
 
         // Prepare entities with observations
@@ -136,7 +143,7 @@ class Neo4jMemory {
         return newRelations;
     }
 
-            async addObservations(observations, tz) {
+    async addObservations(observations, tz) {
         const graph = await this.loadGraph();
         const results = observations.map((o) => {
             const entity = graph.entities.find((e) => e.name === o.entityName);
@@ -179,7 +186,7 @@ class Neo4jMemory {
                      WHERE entity.name IN $entityNames
                      DETACH DELETE entity
                      RETURN count(entity) as deletedCount`,
-                    { entityNames }
+                    {entityNames}
                 );
             });
 
@@ -274,7 +281,11 @@ class Neo4jMemory {
      * @returns {Array} - The query results
      */
     async executeCypherQuery(query, params = {}, isWrite = false) {
-        if (this.debugLogger) this.debugLogger.logFunctionStart('Neo4jMemory.executeCypherQuery', { query, params, isWrite });
+        if (this.debugLogger) this.debugLogger.logFunctionStart('Neo4jMemory.executeCypherQuery', {
+            query,
+            params,
+            isWrite
+        });
         const session = this.neo4jDriver.session({database: this.database});
         try {
             let result;
@@ -285,7 +296,7 @@ class Neo4jMemory {
                 result = await session.executeRead(tx => tx.run(query, params));
             }
 
-            if (this.debugLogger) this.debugLogger.logFunctionEnd('Neo4jMemory.executeCypherQuery', { resultCount: result.records.length });
+            if (this.debugLogger) this.debugLogger.logFunctionEnd('Neo4jMemory.executeCypherQuery', {resultCount: result.records.length});
 
             // Transform the Neo4j result into a more usable format
             return result.records.map(record => {
