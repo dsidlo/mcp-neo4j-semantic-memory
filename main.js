@@ -8,9 +8,11 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import {driver as connectToNeo4j, auth as Neo4jAuth} from 'neo4j-driver';
 import {Neo4jMemory} from './neo4j-memory.js';
+import * as debugLogger from './utils/debug-logger.js';
 
 // Get the database name from environment variables
-const databaseName = process.env.NEO4J_DATABASE || 'neo4j';
+const databaseName = process.env.NEO4J_DATABASE?.trim() || 'neo4j';
+console.error(`Configured to use database: '${databaseName}'`);
 
 // Check if Neo4j environment variables are defined
 if (!process.env.NEO4J_URI) {
@@ -40,7 +42,19 @@ async function validateDatabaseSupport() {
             if (!supportsMultiDb) {
                 throw new Error('This Neo4j instance does not support multiple databases. Please use the default \'neo4j\' database or upgrade to Neo4j Enterprise.');
             }
-            console.error(`Database '${databaseName}' will be used as specified.`);
+
+            // Verify the database exists
+            const session = neo4jDriver.session();
+            try {
+                const result = await session.run('SHOW DATABASES');
+                const databases = result.records.map(record => record.get('name'));
+                if (!databases.includes(databaseName)) {
+                    throw new Error(`Database '${databaseName}' does not exist in this Neo4j instance. Available databases: ${databases.join(', ')}`);
+                }
+                console.error(`Database '${databaseName}' exists and will be used as specified.`);
+            } finally {
+                await session.close();
+            }
         } else {
             console.error('Using default database: \'neo4j\'');
         }
@@ -73,7 +87,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         tools: [
             {
                 name: 'create_base_ontology',
-                description: 'Create a new Base Ontology in the knowledge graph with related entity types',
+                description: 'Create a new Base Ontology in the knowledge graph with related entity types. When new Base Ontologies are created, they are prefixed with "(BO):" (meaning "Base Ontology"). When, and their sibling entities are prefixed with "(OE):" (meaning "Ontology Entity").',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -81,9 +95,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                             type: 'string',
                             description: 'The subject or name of the new Base Ontology'
                         },
+                        parent: {
+                            type: 'string',
+                            description: 'Optional: The parent Ontology of the new Base Ontology, if specified.'
+                        },
                         force_it: {
                             type: 'boolean',
-                            description: 'When true, forces creation even if a similar Base Ontology exists'
+                            description: 'When true, forces creation even if a similar Base Ontology exists. The LLM will set this to true, if the user indicates and instance that it be created.'
                         }
                     },
                     required: ['subject']
@@ -521,11 +539,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     isWrite = true;
                     if (securityNodeName && !allowUnsafeQueries) {
                         preparedQuery = wrapWithSecurityCheck(query, securityNodeName);
+                        if (debugLogger) {
+                            debugLogger.logFunctionEnd('Wrapped safe_cypher_query', {
+                                securityNodeName,
+                                allowUnsafeQueries,
+                                preparedQuery
+                            });
+                        }
                     }
                 }
 
                 // Execute the query
                 const result = await knowledgeGraphMemory.executeCypherQuery(preparedQuery, args.params || {}, isWrite);
+                if (debugLogger) {
+                    debugLogger.logFunctionEnd('Executed safe_cypher_query', {
+                        resultCount: result.length,
+                        securityNodeName,
+                        allowUnsafeQueries
+                    });
+                }
 
                 let message;
                 if (isWrite && result.length === 0) {
@@ -583,10 +615,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 async function main() {
     try {
+        // Add debug logging for main initialization
+        debugLogger.logFunctionStart('main', { 
+            neo4jUri: process.env.NEO4J_URI,
+            databaseName: databaseName,
+            debugEnabled: process.env.MCP_SEMMEM_DEBUG !== undefined
+        });
+
         // Test connection to Neo4j
         console.error(`Connecting to Neo4j at ${process.env.NEO4J_URI}...`);
         const serverInfo = await neo4jDriver.getServerInfo();
         console.error(`Connected to Neo4j ${serverInfo.version} at ${process.env.NEO4J_URI}`);
+        debugLogger.debugLog('main', { serverInfo: serverInfo }, 'info');
 
         // Initialize memory
         console.error('Initializing knowledge graph memory...');
@@ -596,7 +636,9 @@ async function main() {
         const transport = new StdioServerTransport();
         await server.connect(transport);
         console.error(`MCP Knowledge Graph Memory using Neo4j running on stdio (Database: ${databaseName})`);
+        debugLogger.logFunctionEnd('main', { status: 'running' });
     } catch (error) {
+        debugLogger.logFunctionError('main', error);
         console.error('Initialization error:', error.message);
         if (error.code === 'ServiceUnavailable') {
             console.error(`Unable to connect to Neo4j at ${process.env.NEO4J_URI}. Please check if the database is running and your connection details are correct.`);
