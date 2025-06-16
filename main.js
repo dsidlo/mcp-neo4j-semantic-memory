@@ -121,10 +121,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                             type: 'string',
                             description: 'The name of the security node to verify before executing write operations. Required for write operations (CREATE, SET, DELETE, REMOVE, MERGE).'
                         },
-                        params: {
-                            type: 'object',
-                            description: 'Optional parameters for the Cypher query.'
-                        }
+                        params: [
+                            {
+                                type: 'object',
+                                description: 'Optional parameters for the Cypher query.'
+                            },
+                            {
+                                type: 'force',
+                                description: 'Optional parameter for the Cypher query (write) execution. Default is "false". But if there is user insists on (write) cypher query execution, then, it is set to "true". Additionally, the cypher query is only executed if the ALLOW_CYPHER_QUERY_USER_INSISTS environment variable is set to "true".'
+                            }
+                        ]
                     },
                     required: ['query']
                 }
@@ -516,15 +522,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 // Allow unsafe queries if environment variable is set
                 const allowUnsafeQueries = process.env.NEO4J_UNSAFE_MEMORY_CYPHERS === 'true';
 
+                let user_insists = false;
+                if (process.env.ALLOW_CYPHER_QUERY_USER_INSISTS === 'true') {
+                    // User may only insist if the ALLOW_CYPHER_QUERY_USER_INSISTS environment variable is set to "true".
+                    user_insists = args.params.force === 'true';
+                }
+
                 // If query has write operations but no security node provided
-                if (hasWriteOps && !securityNodeName && !allowUnsafeQueries) {
+                if (hasWriteOps && !securityNodeName && !allowUnsafeQueries && !user_insists) {
                     return {
                         content: [
                             {
                                 type: 'text',
                                 text: JSON.stringify({
                                     error: 'Security error: Write operations (CREATE, SET, DELETE, REMOVE, MERGE) detected but no security node provided.',
-                                    details: 'This API requires a valid security token for write operations.'
+                                    details: 'This API requires a valid security node for write operations. To enable this, the server administrator must set the ALLOW_CYPHER_QUERY_USER_INSISTS environment variable to "true" (and the user must insist that the code be executed), or NEO4J_UNSAFE_MEMORY_CYPHERS to "true" (in which case, writes are always allowed).',
+                                    hasWriteOps: hasWriteOps,
+                                    securityNodeName: securityNodeName,
+                                    allowUnsafeQueries: allowUnsafeQueries,
+                                    userInsists: user_insists
                                 }, null, 2)
                             }
                         ]

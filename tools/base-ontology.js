@@ -80,6 +80,14 @@ export async function checkBaseOntologyExists(memory, subject) {
  * @returns {Object} - Result of the creation operation
  */
 export async function createBaseOntology(memory, subject, parent, securityNodeName) {
+
+  // Extract JSON from markdown code block if present
+  const extractJsonFromMarkdown = (markdownString) => {
+    if (!markdownString) return null;
+    const match = markdownString.match(/```json\s*([\s\S]*?)\s*```/i);
+    return match ? match[1] : null;
+  };
+
   try {
     // Use LLM callback to generate the ontology structure
     let ontologyPrompt = `
@@ -168,12 +176,32 @@ export async function createBaseOntology(memory, subject, parent, securityNodeNa
 
     // Get ontology structure from LLM
     const ontologyResponse = await callLLM(ontologyPrompt);
-    const ontologyStructure = ontologyResponse.json || createDefaultOntology(subject);
-    if (debugLogger) debugLogger.debugLog('createBaseOntology', { ontologyStructure }, 'info');
+    if (debugLogger) debugLogger.debugLog('createBaseOntology [after callLLM]', { ontologyResponse }, 'info');
+    // Trow an error if ontologyResponse is not a valid JSON
+    const ontologyStructure = extractJsonFromMarkdown(ontologyResponse.text);
+    if (!ontologyStructure) {
+      if (debugLogger) debugLogger.debugLog('createBaseOntology', { ontologyResponse }, 'error');
+      throw new Error('Invalid JSON response from LLM');
+    }
 
     // Now use LLM to generate the Cypher queries to create this structure
     const cypherPrompt = `
       You are a Neo4j and Cypher expert. Generate the Cypher queries needed to create the following ontology structure in a Neo4j database.
+      Cypher Generation Tips...
+      - MATCH can not exist within a FOREACH, use UNWIND instead as in the example below...
+        <cypher_example>
+        WITH [{name: "Event 1", timetree: {day: 1, month: 1, year: 2014}}, {name: "Event 2", timetree: {day: 2, month: 1, year: 2014}}] AS events
+        UNWIND events AS event
+        CREATE (e:Event {name: event.name})
+        WITH e, event.timetree AS timetree
+        MATCH (year:Year {year: timetree.year }), (year)-[:HAS_MONTH]->(month {month: timetree.month }), (month)-[:HAS_DAY]->(day {day: timetree.day })
+        CREATE (e)-[:HAPPENED_ON]->(day)
+        </cypher_example>
+      - WITH security: Variable security not defined (line 28, column 6 (offset: 3128)) "WITH security"
+        - Use "WITH security, ..."
+      - Property values can only be of primitive types or arrays.
+        - Do not try to use Map(), Double() or other such functions.
+        - Just represent the propery data as strings within the query.
 
       <ontologyStructure>
       ${JSON.stringify(ontologyStructure, null, 2)}
@@ -182,13 +210,13 @@ export async function createBaseOntology(memory, subject, parent, securityNodeNa
       Important requirements:
       1. All CREATE operations must be wrapped with a security check:
          MATCH (security:SecurityNode {name: "${securityNodeName}"})
-         WITH security
+         WITH security,
          WHERE security IS NOT NULL
          [Your CREATE statements here]
       2. Use parameters for dynamic values like $subject and $ontologyStructureJson.
       3. Create the main BaseOntology node with the label \`BaseOntology\` and these properties: \`name\` (prefixed with \`(BO): \`), \`subject\`, \`createdAt\`, \`type\` (set to "BaseOntology"), \`description\`, and \`structure\` (which should store the entire \`ontologyStructure\` JSON as a string, using a parameter like \`$ontologyStructureJson\`).
       4. For entities, create nodes with the label \`OntologyEntity\` and prefix their \`name\` property with \`(OE): \`.
-      5. For relationships between entities, create them with the label \`OntologyRelationship\` and use the \`type\` property from the \`relationships\` array.
+      5. Do not create entities for relationships as this data is already captured in the \`relationships\` array.
       6. For parent-child relationships between the BaseOntology and its entities, create \`HAS_ENTITY\` relationships from the \`BaseOntology\` node to each \`OntologyEntity\` node.
       7. For hierarchical relationships between entities, use the specified relationship types (e.g., \`PARENT_OF\`, \`CHILD_OF\`, \`RELATED_TO\`).
 
@@ -203,13 +231,6 @@ export async function createBaseOntology(memory, subject, parent, securityNodeNa
     `;
 
     const cypherResponse = await callLLM(cypherPrompt, { ontologyStructure });
-
-    // Extract JSON from markdown code block if present
-    const extractJsonFromMarkdown = (markdownString) => {
-      if (!markdownString) return null;
-      const match = markdownString.match(/```json\s*([\s\S]*?)\s*```/i);
-      return match ? match[1] : null;
-    };
 
     // Parse extracted JSON or use the json property directly
     let parsedCypherResponse = cypherResponse.json;
@@ -263,7 +284,7 @@ export async function createBaseOntology(memory, subject, parent, securityNodeNa
       const normalizedParentName = parent.replace(/^\(BO\): /, '');
       const relationshipQuery = `
         MATCH (security:SecurityNode {name: $securityNodeName})
-        WITH security
+        WITH security,
         WHERE security IS NOT NULL
         MATCH (child:BaseOntology {subject: $subject})
         MATCH (parentBo:BaseOntology {subject: $parentName})
@@ -301,24 +322,6 @@ export async function createBaseOntology(memory, subject, parent, securityNodeNa
   }
 }
 
-/**
- * Creates a default ontology structure if LLM response fails
- * @param {string} subject - The subject for the ontology
- * @returns {Object} - A default ontology structure
- */
-function createDefaultOntology(subject) {
-  return {
-    name: `(BO): ${subject}`,
-    description: `Base Ontology for ${subject}`,
-    entities: [
-      { name: '(OE): Concept', type: 'EntityType', description: `A concept within the ${subject} domain` },
-      { name: '(OE): Property', type: 'EntityType', description: `A property in the ${subject} domain` },
-      { name: '(OE): Relationship', type: 'EntityType', description: `A relationship in the ${subject} domain` }
-    ],
-    relationships: [],
-    hierarchy: []
-  };
-}
 
 /**
  * Checks for related ontologies and creates connections using LLM
@@ -384,7 +387,7 @@ async function createOntologyConnections(memory, subject, securityNodeName) {
 
       Remember to include the security node check:
       MATCH (security:SecurityNode {name: "${securityNodeName}"})
-      WITH security
+      WITH security,
       WHERE security IS NOT NULL
       [Your CREATE statements here]
 
@@ -434,7 +437,7 @@ export async function handleCreateBaseOntology(memory, args) {
     if (parent) {
       // Normalize parent name by removing prefix if it exists
       const normalizedParentName = parent.replace(/^\(BO\): /, '');
-      const parentCheckQuery = `MATCH (p:BaseOntology {subject: $parentName}) RETURN p`;
+      const parentCheckQuery = 'MATCH (p:BaseOntology {subject: $parentName}) RETURN p';
       const parentResult = await memory.executeCypherQuery(
         parentCheckQuery,
         { parentName: normalizedParentName },

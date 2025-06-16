@@ -69,6 +69,7 @@ async function executeSecureWriteOperation() {
 
     if (hasWriteOps) {
       preparedQuery = wrapWithSecurityCheck(query, securityNodeName);
+      console.log('Wrapped cypher query:', preparedQuery);
     }
 
     const result = await memory.executeCypherQuery(preparedQuery, params, true);

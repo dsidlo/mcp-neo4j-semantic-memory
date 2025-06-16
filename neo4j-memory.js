@@ -6,12 +6,24 @@ class Neo4jMemory {
         this.neo4jDriver = neo4jDriver;
         this.database = database;
         console.error(`Neo4jMemory initialized with database: ${database}`);
+
+        // Import debug logger at runtime to avoid circular dependencies
+        // This will be a no-op if MCP_SEMMEM_DEBUG is not set
+        import('./utils/debug-logger.js').then(logger => {
+            this.debugLogger = logger;
+            this.debugLogger.debugLog('Neo4jMemory.constructor', { database }, 'init');
+        }).catch(err => {
+            console.error(`Failed to import debug logger: ${err.message}`);
+        });
     }
 
     async loadGraph() {
+        if (this.debugLogger) this.debugLogger.logFunctionStart('Neo4jMemory.loadGraph');
+        console.error(`Creating session for database: '${this.database}'`);
         const session = this.neo4jDriver.session({database: this.database});
         try {
-            console.error(`Loading graph from database: ${this.database}`);
+            console.error(`Loading graph from database: '${this.database}'`);
+            if (this.debugLogger) this.debugLogger.debugLog('Neo4jMemory.loadGraph', { query: 'MATCH (entity:Memory) OPTIONAL MATCH (entity)-[r]->(other) RETURN entity, collect(r) as relations' });
             const res = await session.executeRead((tx) => tx.run(`
         MATCH (entity:Memory)
         OPTIONAL MATCH (entity)-[r]->(other)
@@ -32,12 +44,14 @@ class Neo4jMemory {
                 console.error(`Entities: ${JSON.stringify(kgMemory.entities)}`);
                 console.error(`Relations: ${JSON.stringify(kgMemory.relations)}`);
             }
+            if (this.debugLogger) this.debugLogger.logFunctionEnd('Neo4jMemory.loadGraph', { entityCount: kgMemory.entities.length, relationCount: kgMemory.relations.length });
             return kgMemory;
         } catch (error) {
             console.error(`Error loading graph from database ${this.database}: ${error.message}`);
             if (error.code === 'Neo.ClientError.Database.DatabaseNotFound') {
                 console.error(`Database '${this.database}' does not exist. Please check your Neo4j installation and configuration.`);
             }
+            if (this.debugLogger) this.debugLogger.logFunctionError('Neo4jMemory.loadGraph', error);
             throw error; // Re-throw to allow proper handling upstream
         } finally {
             await session.close();
@@ -46,6 +60,7 @@ class Neo4jMemory {
     }
 
             async saveGraph(graph, tz = 'UTC') {
+        if (this.debugLogger) this.debugLogger.logFunctionStart('Neo4jMemory.saveGraph', { entityCount: graph.entities.length, relationCount: graph.relations.length, tz });
         const session = this.neo4jDriver.session({database: this.database});
 
         // Create a deep copy of the graph
@@ -81,6 +96,11 @@ class Neo4jMemory {
                     memoryGraph: graph
                 }
             );
+            if (this.debugLogger) this.debugLogger.logFunctionEnd('Neo4jMemory.saveGraph', { success: true });
+            return 'Graph saved successfully';
+        }).catch(error => {
+            if (this.debugLogger) this.debugLogger.logFunctionError('Neo4jMemory.saveGraph', error);
+            throw error;
         });
     }
 
@@ -254,6 +274,7 @@ class Neo4jMemory {
      * @returns {Array} - The query results
      */
     async executeCypherQuery(query, params = {}, isWrite = false) {
+        if (this.debugLogger) this.debugLogger.logFunctionStart('Neo4jMemory.executeCypherQuery', { query, params, isWrite });
         const session = this.neo4jDriver.session({database: this.database});
         try {
             let result;
@@ -263,6 +284,8 @@ class Neo4jMemory {
             } else {
                 result = await session.executeRead(tx => tx.run(query, params));
             }
+
+            if (this.debugLogger) this.debugLogger.logFunctionEnd('Neo4jMemory.executeCypherQuery', { resultCount: result.records.length });
 
             // Transform the Neo4j result into a more usable format
             return result.records.map(record => {
@@ -307,6 +330,9 @@ class Neo4jMemory {
                 });
                 return obj;
             });
+        } catch (error) {
+            if (this.debugLogger) this.debugLogger.logFunctionError('Neo4jMemory.executeCypherQuery', error);
+            throw error;
         } finally {
             await session.close();
         }
@@ -320,8 +346,12 @@ class Neo4jMemory {
      */
     async createSecurityNode(name) {
         const query = `
-      CREATE (s:SecurityNode {name: $name, createdAt: datetime()})
-      RETURN s.name as name, s.createdAt as createdAt
+      CREATE (s:SecurityNode {
+        name: $name,
+        createdAt: datetime(),
+        expiresAt: datetime() + duration({minutes: 5})
+      })
+      RETURN s
     `;
 
         return this.executeCypherQuery(query, {name}, true);

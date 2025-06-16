@@ -29,7 +29,7 @@ export function wrapWithSecurityCheck(query, securityNodeName) {
   return `
     // Security check to ensure only authorized operations are performed
     MATCH (security:SecurityNode {name: "${securityNodeName}"})
-    WITH security
+    WITH security,
     WHERE security IS NOT NULL
     // Original query follows
     ${query}

@@ -3,7 +3,10 @@
 ---
 
 ## This is work in progress, please don't using it until this message is removed.
-
+- Features fully implemented so far:
+  - safe_cypher_query
+  - create_base_ontology
+  - working on: create_memory_relationships
 ---
 
 
@@ -12,6 +15,10 @@ This is a fork of Kinark/mcp-neo4j-memory-claude.
 Plans to add...
 - specifying a Neo4j database (neo4j-enterprise), 
 - automated semantic analysis to create associations between memories automatically, to allow for appropriate associations through natural language.
+
+The idea is to add additional semantic relationships between mcp-memories so that searches for appropriate memories gather appropriate data based on the user, or LLM's language.
+
+---
 
 A knowledge graph memory implementation for Claude AI using Neo4j and the Model Context Protocol (MCP).
 
@@ -55,8 +62,30 @@ You can set these variables in your environment or by creating a `.env` file in 
 NEO4J_URI="neo4j://localhost:7687"
 NEO4J_USER="neo4j"
 NEO4J_PASSWORD="password"
-NEO4J_DATABASE="neo4j"
+NEO4J_DATABASE="McpMemory"
 ```
+
+If you don't provide a NEO4J_DATABASE, it defaults to "neo4j".
+
+
+### LLM Provider Configuration
+
+For semantic ontology creation, and cypher generation, this tool calls out to an LLM (aka. "sampling"), of your choice (via [Token.js](https://github.com/token-js/token.js)). You can configure which provider to use:
+
+- `LLM_API_PROVIDER`: Which LLM provider to use (e.g., `openai`, `anthropic`, `mistral`, etc.)
+- `LLM_API_MODEL`: Which model to use with the selected provider
+- Provider-specific API keys (only required for your chosen provider)
+
+Example LLM configuration:
+
+```
+# LLM provider configuration
+LLM_API_PROVIDER="openai"
+LLM_API_MODEL="gpt-4"
+OPENAI_API_KEY="your_openai_key_here"
+```
+
+See [LLM Provider Configuration](docs/LLM-Provider-Configuration.md) for the full list of supported providers and configuration options.
 
 ### Claude Desktop Integration
 
@@ -86,22 +115,22 @@ Add this to your `claude_desktop_config.json`:
 
 This MCP server provides the following tools for any MCP capable environment:
 
-| Tool                          | Description                                                    |
-|-------------------------------|----------------------------------------------------------------|
-| `create_entities`             | Create new entities in the knowledge graph with observations   |
-| `create_relations`            | Create relationships between existing entities                 |
-| `add_observations`            | Add new observations to existing entities                      |
-| `delete_entities`             | Remove entities and their relationships                        |
-| `delete_observations`         | Remove specific observations from entities                     |
-| `delete_relations`            | Remove relationships between entities                          |
-| `read_graph`                  | Retrieve the entire knowledge graph                            |
-| `search_nodes`                | Find entities matching search criteria                         |
-| `open_nodes`                  | Retrieve specific entities by name                             |
-| **Additions**                 |                                                                |
-| `safe_cypher_query`           | Execute safe Cypher queries with security checks for writes    |
-| `create_base_ontology`        | Create a new semantic ontology                                 |
-| `create_base_ontology_rels`   | Create a semantic ontology relationships to existing objects   |
-| `create_object_relationships` | Create relationship between objects and base ontology entities |
+| Tool                          | Description                                                     |
+|-------------------------------|-----------------------------------------------------------------|
+| `create_entities`             | Create new entities in the knowledge graph with observations    |
+| `create_relations`            | Create relationships between existing entities                  |
+| `add_observations`            | Add new observations to existing entities                       |
+| `delete_entities`             | Remove entities and their relationships                         |
+| `delete_observations`         | Remove specific observations from entities                      |
+| `delete_relations`            | Remove relationships between entities                           |
+| `read_graph`                  | Retrieve the entire knowledge graph                             |
+| `search_nodes`                | Find entities matching search criteria                          |
+| `open_nodes`                  | Retrieve specific entities by name                              |
+| **Additions**                 |                                                                 |
+| `safe_cypher_query`           | Execute safe Cypher queries with security checks for writes     |
+| `create_base_ontology`        | Create a new semantic ontology                                  |
+| `create_base_ontology_rels`   | Create a semantic ontology relationships to existing objects    |
+| `create_memory_relationships` | Create relationship between memories and base ontology entities |
 
 ## Example Usage (in Claude)
 

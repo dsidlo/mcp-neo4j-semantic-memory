@@ -12,6 +12,20 @@ This MCP implementation includes a comprehensive debugging system that can be en
 
 To enable the built-in debugging system, set the `MCP_SEMMEM_DEBUG` environment variable:
 
+#### Debugging Environment variables
+
+- **MCP_SEMMEM_DEBUG**='debug'
+  - Output logs to /tmp/mcp-semmem-debug.log
+- **NEO4J_UNSAFE_MEMORY_CYPHERS**='[false|true]'
+  - Defaults to 'false', allows unsafe operations to occur.
+- **ALLOW_CYPHER_QUERY_USER_INSISTS**='[false|true]'
+  - Allows write operations, if user insists.
+    - "Make some change to McpMemory."
+      - Error: Security Node does not exist...
+    - "Make some change to McpMemory.... I insist."
+  - Does not require NEO4J_UNSAFE_MEMORY_CYPHERS to be set to true.
+
+
 ```bash
 # Basic enabling (info level)
 export MCP_SEMMEM_DEBUG=info
@@ -165,6 +179,8 @@ You can test the MCP server under development by using bash as the main command.
   }
 }
 ```
+
+Keep in mind that .env files are also read, first from your home dir "~/.env", then from the current working dir ".env", then the env vars in the JSON structure. In that order, the the later, overriding the earlier.
 
 ## Troubleshooting
 

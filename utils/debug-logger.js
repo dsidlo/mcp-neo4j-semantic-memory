@@ -34,8 +34,29 @@ export function debugLog(functionName, data, type = 'info') {
   try {
     const timestamp = new Date().toISOString();
 
+    // Process nested JSON strings within objects
+    let processedData = data;
+    if (typeof data === 'object') {
+      processedData = JSON.parse(JSON.stringify(data)); // Create a deep copy
+
+      // Check for JSON strings inside the object that could be parsed
+      Object.keys(processedData).forEach(key => {
+        if (typeof processedData[key] === 'string' && 
+            (processedData[key].trim().startsWith('{') || processedData[key].trim().startsWith('[')) && 
+            (processedData[key].trim().endsWith('}') || processedData[key].trim().endsWith(']'))) {
+          try {
+            // Attempt to parse potential JSON strings
+            processedData[key] = JSON.parse(processedData[key]);
+          } catch (e) {
+            // If it's not valid JSON, keep it as a string
+            console.warn(`Warn: Exception parsing JSON string in ${functionName}: ${e.message}`);
+          }
+        }
+      });
+    }
+
     // Format the log entry with more readable indentation for objects
-    const dataStr = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
+    const dataStr = typeof processedData === 'object' ? JSON.stringify(processedData, null, 2) : processedData;
     const logText = `[${timestamp}] [${type.toUpperCase()}] [${functionName}] ${dataStr}\n`;
 
     // Check again that logger is enabled before writing

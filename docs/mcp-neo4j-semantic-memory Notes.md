@@ -1,6 +1,51 @@
 # mcp-neo4j-semantic-memory Notes
 
-# Creating a base (semantic) ontology
+# Feature: Leverage Token.js/Token.js
+
+Token.js allows one to connect to 9 different LLM Service Providers and various local LLMs and openai-compatible LLMs, totaling up to over 200 AI models. So now, I needed to add this so that it was possible to do LLM "sampling" or call-outs to any given LLM to create a Base Ontology for any given subject, as to also create the graph database cypher commands to persist the given Semantic Ontology network.
+
+**Note**: There is a big difference between a local model's ability to generate the a Semantic Ontology, vs. the large commercial systems such as Claude, Gemini, and Grok. Nevertheless, you can work with what you have.
+
+
+# Feature: Support multiple Neo4j databases
+
+Being able to support multiple Neo4j databases is really important as one may want to use a different database for each project. Additionally, the focus of the specific Semantic Ontologies required for a given project may be quite different, and it helps to reduce the clutter between projects.
+
+
+# Feature: Safe Cypher Queries
+
+The safe Cypher Queries tool is used by the LLM call-out to execute safe Cypher queries on behalf of the MCP server. A user can use it to perform non-write operations, but write operations may only be performed on behalf of this MCP server.
+
+We know that the MCP server is requesting the write operation by using a CASE expression to verify that a security node exists before the write operation is executed.
+
+- Flow...
+  - Request: Create a new Base Ontology
+    - Create single Security node with a unique name
+    - LLM Callback - Create Ontology structure (pass-in security node)
+      - Cypher uses CASE: only if security node exists...
+        - Write new Base Ontology structures
+      - Return from call-out: (Ontology Structure) Success
+    - Remove Security Node.
+    - Return new Ontology Structure to calling LLM.
+
+- Allow user to make read-only queries of mcp-memory.
+  - The user may request the LLM to query memory in various ways but won't be able to write to the memory database, at least not with this MCP service.
+  - If a cypher query comes into the safe_cypher_query function without a security_node parameter, it will return an error message write operators exist in the query.
+    - Cypher Write Operators: CREATE, SET, DELETE, REMOVE
+  - Add an environment variable to by-pass safe_cypher_queries?
+    - NEO4J_UNSAFE_MEMORY_CYPHERS=true
+
+## AI Coder...
+
+"This coding prompt mostly worked. Then I did additional tweaks directly to the code to get the "ALLOW_CYPHER_QUERY_USER_INSISTS" with user-insistence working."
+
+---
+
+"Create a new mcp tool called safe_cypher_query that takes a security-node-name and a cypher-query. If cypher query contains any write operations (CREATE, SET, DELETE, REMOVE) it must be accompanied with a security-node-name, other wise, we go ahead and execute the read-only cypher. If the cypher contains write operations and a security-node-name, we enclude the cypher with a case statement which only executes the write-cypher if the named security-node exists."
+
+---
+
+# Feature: Creating a base (semantic) ontology
 
 The point of creating Base Semantic Ontologies is to allow natural language semantics to more easily associate with existing objects in memory and to have a semantic relationship between those memories.
 
@@ -22,10 +67,15 @@ The point of creating Base Semantic Ontologies is to allow natural language sema
   - The base ontology entity and its entity subset is persisted to the graph as nodes where the base ontologies entities (child nodes) point to the base ontology (parent node) via "isA" relationships.
   - The within base ontology node we persist the the JSON struct of it's sub-entities and the various potential (entity-relationship-entity) ERE's that are possible.
   - We also check to see of the new Base Ontology is either a parent or a child of an existing Base Ontology, and we request that appropriate associations are made. This allows one to create a hierarchy of Base Semantic Ontologies.
-- This can be done via one call-back to the LLM to generate appropriate cypher queries.
+- This can be done via one call-out to the LLM to generate appropriate cypher queries.
 - Base ontologies can be created on the fly for objects as they come in, if one does not already exist.
 
+- Calling out to an LLM (LLM call-out) is also known as "sampling".
+  "This terminology highlights the probabilistic and random nature of the LLM interaction (statistic, "getting a sample"), distinguishing it from deterministic processes."
+
 ## AI Coder
+
+   "The following coding prompt got me mostly there..."
 
 ---
 
@@ -33,7 +83,7 @@ Create the create_base_ontology mcp tool that accepts
 - Parameters: 
   - `<subject>`: The new Base Ontology
   - `<force_it>`: Turns on when the user insists on the creation of the new Base Ontology
-- When this tool is called on and when we anticipate that LLM call-backs will be called to that will perform database write operations, via safe_cypher_queries, we create a unique "security-node" and pass it's name into the LLM call-back(s) so that the appropriate write operations can occur.
+- When this tool is called on and when we anticipate that LLM call-outs will be called to that will perform database write operations, via safe_cypher_queries, we create a unique "security-node" and pass it's name into the LLM call-out(s) so that the appropriate write operations can occur.
   - LLM callback: Check if the subject is already represented by an existing Base Ontology.<br>
     - Perform a query for the list of existing Base Ontologies.<br>
         - Check if <subject> is already represented by an existing Base Ontology.<br>
@@ -42,7 +92,7 @@ Create the create_base_ontology mcp tool that accepts
         - Not Represented: Or, `<force_it>` is set,<br>
           - Ensure that the new Base Ontology does not exist.<br>
             - Does not exist: Create the new Base Ontology and related Entities.<br>
-              - This is done also don via an LLM call-back.
+              - This is done also don via an LLM call-out.
               - Return message that a new Base Ontology was created along with details.
           - Base Ontology exists.
             - Return appropriate message.
@@ -51,33 +101,4 @@ Create the create_base_ontology mcp tool that accepts
 
 ---
 
-# Safe Cypher Queries
-
-The safe Cypher Queries tool is used by the LLM call-back to execute safe Cypher queries on behalf of the MCP server. A user can use it to perform non-write operations, but write operations may only be performed on behalf of this MCP server.
-
-We know that the MCP server is requesting the write operation by using a CASE expression to verify that a security node exists before the write operation is executed.
-
-- Flow...
-  - Request: Create a new Base Ontology
-    - Create single Security node with a unique name
-    - LLM Callback - Create Ontology structure (pass-in security node)
-      - Cypher uses CASE: only if security node exists...
-        - Write new Base Ontology structures
-      - Return from call-back: (Ontology Structure) Success
-    - Remove Security Node.
-    - Return new Ontology Structure to calling LLM.
-
-- Allow user to make read-only queries of mcp-memory.
-  - The user may request the LLM to query memory in various ways but won't be able to write to the memory database, at least not with this MCP service.
-  - If a cypher query comes into the safe_cypher_query function without a security_node parameter, it will return an error message write operators exist in the query.
-    - Cypher Write Operators: CREATE, SET, DELETE, REMOVE
-  - Add an environment variable to by-pass safe_cypher_queries? 
-    - NEO4J_UNSAFE_MEMORY_CYPHERS=true 
-
-## AI Coder...
-
----
-
-  "Create a new mcp tool called safe_cypher_query that takes a security-node-name and a cypher-query. If cypher query contains any write operations (CREATE, SET, DELETE, REMOVE) it must be accompanied with a security-node-name, other wise, we go ahead and execute the read-only cypher. If the cypher contains write operations and a security-node-name, we enclude the cypher with a case statement which only executes the write-cypher if the named security-node exists."
-  
----
+# FeatureL Create Memory Relationships

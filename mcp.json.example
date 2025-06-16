@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "default-server": {
+      "command": "node",
+      "args": [
+        // Your current code.
+        "main.js"
+        // If you build.
+        "dist/index.js"
+      ],
+      "env": {
+        "HOME": "<your_home_dir>",
+        "LOGNAME": "dsidlo",
+        "PATH": "<You path variable>",
+        "SHELL": "/bin/bash",
+        "TERM": "xterm-256color",
+        "USER": "<user_name>>"
+      }
+    }
+  }
+}

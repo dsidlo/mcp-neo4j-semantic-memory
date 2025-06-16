@@ -27,7 +27,8 @@
     "@modelcontextprotocol/sdk": "1.0.1",
     "dotenv": "^16.3.1",
     "jsonc-eslint-parser": "2.4.0",
-    "neo4j-driver": "5.27.0"
+    "neo4j-driver": "5.27.0",
+    "token.js": "^0.7.1"
   },
   "module": "./main.js",
   "type": "module",
@@ -37,14 +38,18 @@
   },
   "scripts": {
     "start": "node main.js",
+    "start:dist": "node dist/bundle.cjs",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "build": "esbuild main.js --bundle --platform=node --format=cjs --outfile=dist/bundle.cjs",
+    "inspect": "DANGEROUSLY_OMIT_AUTH=true npx @modelcontextprotocol/inspector node main.js"
   },
   "engines": {
     "node": ">=16.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.28.0",
+    "esbuild": "^0.25.5",
     "eslint": "^9.28.0",
     "globals": "^13.24.0"
   }

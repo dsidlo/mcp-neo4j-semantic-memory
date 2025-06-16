@@ -21,5 +21,10 @@ export default [
       // Enforce single quotes for strings
       'quotes': ['error', 'single']
     }
+  },
+
+  // Ignore the dist directory
+  {
+    ignores: ['dist/**']
   }
 ];
