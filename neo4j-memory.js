@@ -62,11 +62,10 @@ class Neo4jMemory {
         // Unreachable code removed
     }
 
-    async saveGraph(graph, tz = 'UTC') {
+    async saveGraph(graph) {
         if (this.debugLogger) this.debugLogger.logFunctionStart('Neo4jMemory.saveGraph', {
             entityCount: graph.entities.length,
-            relationCount: graph.relations.length,
-            tz
+            relationCount: graph.relations.length
         });
         const session = this.neo4jDriver.session({database: this.database});
 
@@ -80,15 +79,14 @@ class Neo4jMemory {
         MERGE (entityMemory:Memory { entityID: entity.name })
         ON CREATE SET
           entityMemory += entity,
-          entityMemory.createdAt = datetime({timezone: $tz}),
-          entityMemory.updatedAt = datetime({timezone: $tz})
+          entityMemory.createdAt = datetime({timezone: 'UTC'}),
+          entityMemory.updatedAt = datetime({timezone: 'UTC'})
         ON MATCH SET
           entityMemory += entity,
-          entityMemory.updatedAt = datetime({timezone: $tz})
+          entityMemory.updatedAt = datetime({timezone: 'UTC'})
         `,
                 {
-                    memoryGraph: processedGraph,
-                    tz: tz
+                    memoryGraph: processedGraph
                 }
             );
             await txc.run(
@@ -111,7 +109,7 @@ class Neo4jMemory {
         });
     }
 
-    async createEntities(entities, tz) {
+    async createEntities(entities) {
         const graph = await this.loadGraph();
 
         // Prepare entities with observations
@@ -129,7 +127,7 @@ class Neo4jMemory {
 
         const newEntities = processedEntities.filter((e) => !graph.entities.some((existingEntity) => existingEntity.name === e.name));
         graph.entities.push(...newEntities);
-        await this.saveGraph(graph, tz);
+        await this.saveGraph(graph);
         return newEntities;
     }
 
@@ -143,7 +141,7 @@ class Neo4jMemory {
         return newRelations;
     }
 
-    async addObservations(observations, tz) {
+    async addObservations(observations) {
         const graph = await this.loadGraph();
         const results = observations.map((o) => {
             const entity = graph.entities.find((e) => e.name === o.entityName);
@@ -164,7 +162,7 @@ class Neo4jMemory {
 
             return {entityName: o.entityName, addedObservations: newObservations};
         });
-        await this.saveGraph(graph, tz);
+        await this.saveGraph(graph);
         return results;
     }
 
