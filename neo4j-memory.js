@@ -1,3 +1,4 @@
+
 class Neo4jMemory {
     constructor(neo4jDriver, database = 'neo4j') {
         if (!neo4jDriver) {
@@ -97,8 +98,8 @@ class Neo4jMemory {
         `;
             if (this.debugLogger) {
                 this.debugLogger.debugLog('Neo4jMemory.saveGraph', {
-                    query: entitiesQuery,
-                    params: { memoryGraph: processedGraph }
+                    graph: graph,
+                    query: entitiesQuery
                 }, 'cypher');
             }
             await txc.run(
@@ -308,66 +309,26 @@ class Neo4jMemory {
      * @returns {Array} - The query results
      */
     async executeCypherQuery(query, params = {}, isWrite = false) {
-        if (this.debugLogger) this.debugLogger.logFunctionStart('Neo4jMemory.executeCypherQuery', {
-            query,
-            params,
-            isWrite
-        });
         const session = this.neo4jDriver.session({database: this.database});
         try {
             let result;
+            if (this.debugLogger) {
+                this.debugLogger.debugLog('Neo4jMemory.executeCypherQuery', {
+                    query: query,
+                    securityNode: params.name,
+                    isWrite: isWrite,
+                    database: this.database
+                });
+            }
 
             if (isWrite) {
                 result = await session.executeWrite(tx => tx.run(query, params));
             } else {
-                result = await session.executeRead(tx => tx.run(query, params));
+                result = await session.executeRead(tx => tx.run(query), params);
             }
 
-            if (this.debugLogger) this.debugLogger.logFunctionEnd('Neo4jMemory.executeCypherQuery', {resultCount: result.records.length});
+            return result.records;
 
-            // Transform the Neo4j result into a more usable format
-            return result.records.map(record => {
-                const obj = {};
-                record.keys.forEach(key => {
-                    const value = record.get(key);
-
-                    // Handle Neo4j types appropriately
-                    if (value && typeof value === 'object' && value.constructor.name === 'Node') {
-                        // For Neo4j nodes, return properties and labels
-                        obj[key] = {
-                            ...value.properties,
-                            _labels: value.labels
-                        };
-                    } else if (value && typeof value === 'object' && value.constructor.name === 'Relationship') {
-                        // For relationships, return properties and type
-                        obj[key] = {
-                            ...value.properties,
-                            _type: value.type,
-                            _startNodeId: value.startNodeElementId,
-                            _endNodeId: value.endNodeElementId
-                        };
-                    } else if (value && typeof value === 'object' && value.constructor.name === 'Path') {
-                        // For paths, return segments
-                        obj[key] = {
-                            segments: value.segments.map(seg => ({
-                                start: {...seg.start.properties, _labels: seg.start.labels},
-                                relationship: {
-                                    ...seg.relationship.properties,
-                                    _type: seg.relationship.type
-                                },
-                                end: {...seg.end.properties, _labels: seg.end.labels}
-                            }))
-                        };
-                    } else if (value && typeof value === 'object' && value.constructor.name === 'DateTime') {
-                        // For Neo4j DateTime objects, convert to ISO string
-                        obj[key] = value.toString();
-                    } else {
-                        // For primitive values and other objects
-                        obj[key] = value;
-                    }
-                });
-                return obj;
-            });
         } catch (error) {
             if (this.debugLogger) this.debugLogger.logFunctionError('Neo4jMemory.executeCypherQuery', error);
             throw error;

@@ -32,6 +32,8 @@ const neo4jDriver = connectToNeo4j(
     Neo4jAuth.basic(process.env.NEO4J_USER, process.env.NEO4J_PASSWORD)
 );
 
+await debugLogger.debugLog('Neo4jMemory', 'Initialized Neo4j driver', process.env);
+
 // Check for multi-database support
 async function validateDatabaseSupport() {
     try {
@@ -87,7 +89,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         tools: [
             {
                 name: 'create_base_ontology',
-                description: 'Create a new Base Ontology in the knowledge graph with related entity types. When new Base Ontologies are created, they are prefixed with "(BO):" (meaning "Base Ontology"). When, and their sibling entities are prefixed with "(OE):" (meaning "Ontology Entity").',
+                description: 'Create a new Base Ontology in the knowledge graph with related entity types. When new Base Ontologies are created, they are prefixed with (BO): (meaning Base-Ontology). When, and their sibling entities are prefixed with (OE): (meaning Ontology-Entity).',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -109,7 +111,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: 'safe_cypher_query',
-                description: 'Execute a Cypher query against the Neo4j database. For read-only queries, no security node is required. For write operations (CREATE, SET, DELETE, REMOVE, MERGE), a valid security node name must be provided.',
+                description: 'Execute a Cypher query against the Neo4j database. For read-only queries, no security node is required. For write operations (CREATE, SET, DELETE, REMOVE, MERGE), a valid security node name should be provided in the securityNodeName parameter. If there is User Insistence that the write should happen, then set the force parameter to "true".',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -121,16 +123,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                             type: 'string',
                             description: 'The name of the security node to verify before executing write operations. Required for write operations (CREATE, SET, DELETE, REMOVE, MERGE).'
                         },
-                        params: [
-                            {
-                                type: 'object',
-                                description: 'Optional parameters for the Cypher query.'
-                            },
-                            {
-                                type: 'force',
-                                description: 'Optional parameter for the Cypher query (write) execution. Default is "false". But if there is user insists on (write) cypher query execution, then, it is set to "true". Additionally, the cypher query is only executed if the ALLOW_CYPHER_QUERY_USER_INSISTS environment variable is set to "true".'
-                            }
-                        ]
+                        force: {
+                            type: 'boolean',
+                            description: 'Optional parameter for the Cypher query (write) execution. Default is "false". But if there is user insists on (write) cypher query execution, then, it is set to "true". Additionally, the cypher query is only executed if the ALLOW_CYPHER_QUERY_USER_INSISTS environment variable is set to "true".'
+                        }
                     },
                     required: ['query']
                 }
@@ -472,9 +468,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     }
                 ]
             };
-                    case 'create_base_ontology':
+        case 'create_base_ontology':
             try {
-                const { handleCreateBaseOntology } = await import('./tools/base-ontology.js');
+                const {handleCreateBaseOntology} = await import('./tools/base-ontology.js');
                 const result = await handleCreateBaseOntology(knowledgeGraphMemory, args);
                 return {
                     content: [
@@ -505,6 +501,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
                 const query = args.query;
                 const securityNodeName = args.securityNodeName || null;
+                const force = args.force || false;
+
+                if (debugLogger) {
+                    debugLogger.logFunctionStart('safe_cypher_query', {query, securityNodeName, force});
+                }
 
                 // Check if the query contains write operations
                 const hasWriteOps = containsWriteOperations(query);
@@ -515,7 +516,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 let user_insists = false;
                 if (process.env.ALLOW_CYPHER_QUERY_USER_INSISTS === 'true') {
                     // User may only insist if the ALLOW_CYPHER_QUERY_USER_INSISTS environment variable is set to "true".
-                    user_insists = args.params.force === 'true';
+                    user_insists = force === true;
                 }
 
                 // If query has write operations but no security node provided
@@ -530,6 +531,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                                     hasWriteOps: hasWriteOps,
                                     securityNodeName: securityNodeName,
                                     allowUnsafeQueries: allowUnsafeQueries,
+                                    allowCypherQueryUserInsists: process.env.ALLOW_CYPHER_QUERY_USER_INSISTS,
                                     userInsists: user_insists
                                 }, null, 2)
                             }
@@ -555,15 +557,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     }
                 }
 
-                // Execute the query
-                const result = await knowledgeGraphMemory.executeCypherQuery(preparedQuery, args.params || {}, isWrite);
-                if (debugLogger) {
-                    debugLogger.logFunctionEnd('Executed safe_cypher_query', {
-                        resultCount: result.length,
-                        securityNodeName,
-                        allowUnsafeQueries
-                    });
+                // if prepareQuery is undefined
+                if (preparedQuery === undefined) {
+                    preparedQuery = query;
                 }
+
+                // Execute the query
+                let params = {name: securityNodeName};
+                const result = await knowledgeGraphMemory.executeCypherQuery(preparedQuery, params, isWrite);
+                // if (debugLogger) {
+                //     debugLogger.logFunctionEnd('Executed safe_cypher_query', {
+                //         resultCount: result.length,
+                //         securityNodeName: securityNodeName,
+                //         allowUnsafeQueries: allowUnsafeQueries,
+                //         databaseName: databaseName
+                //     });
+                // }
 
                 let message;
                 if (isWrite && result.length === 0) {
@@ -577,7 +586,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 const responsePayload = {
                     result: result,
                     rowCount: result.length,
-                    queryType: hasWriteOps ? 'write' : 'read'
+                    queryType: hasWriteOps ? 'write' : 'read',
+                    databaseName: databaseName
                 };
 
                 if (message) {
@@ -601,12 +611,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 };
             } catch (error) {
                 console.error(`Error executing Cypher query: ${error.message}`);
+                if (debugLogger) {
+                    debugLogger.logFunctionError('safe_cypher_query', error, args);
+                }
                 return {
                     content: [
                         {
                             type: 'text',
                             text: JSON.stringify({
                                 error: 'Error executing Cypher query',
+                                args: args,
                                 message: error.message,
                                 code: error.code || 'UNKNOWN'
                             }, null, 2)
@@ -622,17 +636,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
     try {
         // Add debug logging for main initialization
-        debugLogger.logFunctionStart('main', { 
+        debugLogger.logFunctionStart('main', {
             neo4jUri: process.env.NEO4J_URI,
             databaseName: databaseName,
-            debugEnabled: process.env.MCP_SEMMEM_DEBUG !== undefined
+            debugEnabled: process.env.MCP_SEMMEM_DEBUG !== undefined,
+            envs: process.env
         });
 
         // Test connection to Neo4j
         console.error(`Connecting to Neo4j at ${process.env.NEO4J_URI}...`);
         const serverInfo = await neo4jDriver.getServerInfo();
         console.error(`Connected to Neo4j ${serverInfo.version} at ${process.env.NEO4J_URI}`);
-        debugLogger.debugLog('main', { serverInfo: serverInfo }, 'info');
+        debugLogger.debugLog('main', {serverInfo: serverInfo}, 'info');
 
         // Initialize memory
         console.error('Initializing knowledge graph memory...');
@@ -642,7 +657,7 @@ async function main() {
         const transport = new StdioServerTransport();
         await server.connect(transport);
         console.error(`MCP Knowledge Graph Memory using Neo4j running on stdio (Database: ${databaseName})`);
-        debugLogger.logFunctionEnd('main', { status: 'running' });
+        debugLogger.logFunctionEnd('main', {status: 'running'});
     } catch (error) {
         debugLogger.logFunctionError('main', error);
         console.error('Initialization error:', error.message);

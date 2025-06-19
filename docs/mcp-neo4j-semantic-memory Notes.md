@@ -101,4 +101,26 @@ Create the create_base_ontology mcp tool that accepts
 
 ---
 
-# FeatureL Create Memory Relationships
+# Feature Create Memory Relationships
+
+Add the mcp tool and functions required to call on the create_memory_relationships tool.
+- Parameters:
+  - <base_ontology_structures>: []
+  - 
+- When this tool is called, the calling LLM is expected to have first performed a request for the "structure" property of all "(BO)" base ontologies, The structure property is a JSON object that contains the Base Ontologies, Ontology Entities and How these Entities are allowed to relate to each other.
+- The LLM should
+
+Perform each one of these steps individually. After each step, continue on to the next step without stopping or requesting user intervention. Perform all cypher write operations with "User Insistence". Do not re-plan this plan, Only perform the steps as specified in this plan an no other. Add a "force: true" parameter when calling on the safe_cypher_query function.
+- SemMem, read all (n:OntologyEntity) nodes (Entities prefixed with "(OE)", using safe_cypher_query)
+- then read all memories (n:Memory)
+- Perform a semantic analysis of each memory.
+- Based on the previous semantic analysis, associate the (OntologyEntity nodes) to matching memories where appropriate, with an appropriately named relationship.
+- All the data that you need is in the Node's properties such as the "observations" property.
+- You don't have to read any files.
+- Check for duplicated relationship
+- Delete any duplicate relationship, leavin only one of them.
+- Use create a cypher to perform an update and use safe_cypher_query execute the cyper with user insistence.
+
+Do not re-plan this plan, execute it as requested.
+Execute this plan to completion without stopping or requesting user intervention.
+Mind that cypher queries are correct with regard to WITH.WHERE clauses.

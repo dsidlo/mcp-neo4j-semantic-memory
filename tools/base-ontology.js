@@ -202,6 +202,16 @@ export async function createBaseOntology(memory, subject, parent, securityNodeNa
       - Property values can only be of primitive types or arrays.
         - Do not try to use Map(), Double() or other such functions.
         - Just represent the propery data as strings within the query.
+      - DateTime fields and properties. Always use ISO 8601 format.
+        - <dateformat>
+          Store dates in the format YYYY-MM-DDTHH:MM:SS±HH:MM, where:
+          YYYY-MM-DD is the date (e.g., 2025-06-16).
+          T separates the date and time.
+          HH:MM:SS is the time (e.g., 04:06:00).
+          ±HH:MM is the timezone offset from UTC (e.g., -07:00 for Pacific Daylight Time).
+          For example, today’s date and time at 04:06 AM PDT would be "2025-06-16T04:06:00-07:00".
+          </dateformat>
+
 
       <ontologyStructure>
       ${JSON.stringify(ontologyStructure, null, 2)}

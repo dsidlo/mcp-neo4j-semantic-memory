@@ -42,7 +42,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "build": "esbuild main.js --bundle --platform=node --format=cjs --outfile=dist/bundle.cjs",
-    "inspect": "DANGEROUSLY_OMIT_AUTH=true npx @modelcontextprotocol/inspector node main.js"
+    "inspect": "cd ~/workspace/mcp-neo4j-semantic-memory && DANGEROUSLY_OMIT_AUTH=true npx @modelcontextprotocol/inspector --config mcp.json --server mcp-neo4j-semantic-memory"
   },
   "engines": {
     "node": ">=16.0.0"
